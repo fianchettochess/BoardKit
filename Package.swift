@@ -2,15 +2,18 @@
 //
 // BoardKit — the board-adapter seam layer between physical chess boards (Square
 // Off, Chessnut Air family, DGT Pegasus, Millennium, …) and the Fianchetto
-// kernel stack (BoardExecutionGate, OccupancyMoveInference, OccupancyDiffResolver,
+// kernel stack (BoardExecutionGate, OccupancyMoveInference, BoardDiffResolver,
 // BoardCorrectionPlanner, BoardSyncGate, BoardReconnectPolicy, ChessBoardGeometry).
 //
-// Two-pass design:
-//   Pass 1 (this commit) — seam types (BoardEvent/Command/Capabilities/Adapter/
-//     Transport protocols) + the Chessnut Air adapter + test harness.
-//   Pass 2 (future) — the seven SquareOff-rooted kernels migrate from
-//     FianchettoKit into BoardKit, renamed per the seam design; a SquareOff
-//     adapter joins ChessnutAdapter as a second concrete target.
+// Three-target design (as of 2026-07-03 extraction pass):
+//   BoardKit          — seam protocols (BoardEvent/Command/Capabilities/Adapter/
+//                       Transport) + shared board-agnostic kernels (gate, inference,
+//                       diff resolver, correction planner, geometry, reconnect policy,
+//                       sync gate).
+//   SquareOffAdapter  — Square Off wire codec (SquareOffMessage/Framer/Parser/Event/
+//                       Command) + SquareOffAdapter: BoardAdapter implementation.
+//   ChessnutAdapter   — Chessnut Air-family adapter.
+//   BoardKitTestSupport — ReplayTransport + SimulatedBoard harness.
 //
 // BoardKit depends on ChessCore (permissive MIT floor) and carries the same
 // generous community deployment floor. No SwiftUI, CoreBluetooth, SkipFuse,
@@ -27,10 +30,10 @@ let package = Package(
         .visionOS(.v1),
     ],
     products: [
-        // Core seam: BoardEvent, BoardCommand, BoardCapabilities, BoardAdapter,
-        // BoardTransport. Kernel types (BoardExecutionGate, etc.) arrive in
-        // Pass 2 when they migrate from FianchettoKit.
+        // Core seam + board-agnostic kernels.
         .library(name: "BoardKit", targets: ["BoardKit"]),
+        // Square Off protocol codec + BoardAdapter implementation.
+        .library(name: "SquareOffAdapter", targets: ["SquareOffAdapter"]),
         // Chessnut Air-family adapter (Air, Air+, Pro, Go).
         // Protocol-verified against the official Chessnut docs, SWIFT-REF
         // (NSStudent/EasyLinkSwiftSDK, MIT), and C-REF (EasyLinkSDK, MIT).
@@ -50,13 +53,25 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
     ],
     targets: [
-        // ── Core seam ─────────────────────────────────────────────────────────
+        // ── Core seam + board-agnostic kernels ────────────────────────────────
         .target(
             name: "BoardKit",
             dependencies: [
                 .product(name: "ChessCore", package: "ChessCore"),
             ],
             path: "Sources/BoardKit"
+        ),
+
+        // ── Square Off adapter ────────────────────────────────────────────────
+        // Wire codec (SquareOffMessage/Framer/Parser/Event/Command) + adapter.
+        // Square Off-specific names are preserved here — this is the right layer.
+        .target(
+            name: "SquareOffAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/SquareOffAdapter"
         ),
 
         // ── Chessnut Air-family adapter ───────────────────────────────────────
@@ -84,6 +99,7 @@ let package = Package(
             name: "BoardKitTests",
             dependencies: [
                 "BoardKit",
+                "SquareOffAdapter",
                 "ChessnutAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
