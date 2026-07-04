@@ -72,7 +72,9 @@ public protocol BoardAdapter: Sendable {
     /// .startSession       → "14#1*".data(using: .ascii)
     /// .requestState       → "30#R*".data(using: .ascii)
     /// .indicateSquares    → "25#<sq1>,<sq2>*".data(using: .ascii)
-    /// .executeMove(uci:)  → sendMove wire (GKS / Pro motorised only)
+    /// .executeMove(uci:)  → nil (QUARANTINED: sendMove wire semantics are
+    ///                       hardware-unverified and may auto-move on
+    ///                       motorised models; see SquareOffAdapter)
     /// .custom(data)       → data verbatim
     /// ```
     func encode(_ command: BoardCommand) -> Data?
@@ -93,7 +95,8 @@ public protocol BoardAdapter: Sendable {
     ///
     /// ## Square Off mapping (Pass 2 reference)
     /// - First connect:
-    ///   `[(.startSession, 0), (.requestState, .milliseconds(150))]`
+    ///   `[(.startSession, .milliseconds(250)), (.requestState, .milliseconds(150))]`
+    ///   (250ms = hardware-proven link-settle; matches the shipped adapter)
     /// - Reconnect:
     ///   `[(.requestState, .milliseconds(250))]`
     func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)]

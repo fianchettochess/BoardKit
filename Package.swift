@@ -40,6 +40,21 @@ let package = Package(
         // Hardware-unverified — awaiting physical-board or capture-log
         // validation (see README).
         .library(name: "ChessnutAdapter", targets: ["ChessnutAdapter"]),
+        // DGT Pegasus BLE adapter. Occupancy-sensing + per-square LED move indication.
+        // Protocol-informed from DGT developer resources; hardware-unverified.
+        .library(name: "PegasusAdapter", targets: ["PegasusAdapter"]),
+        // Millennium chess board adapter (BLE + USB-HID family).
+        // Piece identity via Hall sensors; 9×9 corner LED grid.
+        // Protocol-informed from MIT community drivers; hardware-unverified.
+        .library(name: "MillenniumAdapter", targets: ["MillenniumAdapter"]),
+        // Certabo e-board adapter (USB serial, RFID piece identity).
+        // Per-square LED indicators. Protocol-informed from MIT drivers;
+        // hardware-unverified.
+        .library(name: "CertaboAdapter", targets: ["CertaboAdapter"]),
+        // ChessUp BLE adapter (Moverio/BrainBox smart board).
+        // Per-square LEDs; piece identity TBD. Protocol partially known from
+        // community BLE captures; hardware-unverified.
+        .library(name: "ChessUpAdapter", targets: ["ChessUpAdapter"]),
         // Test support: ReplayTransport + SimulatedBoard. Listed as a product
         // so test-only app targets can depend on it. Not part of the production
         // graph.
@@ -84,6 +99,57 @@ let package = Package(
             path: "Sources/ChessnutAdapter"
         ),
 
+        // ── DGT Pegasus adapter ───────────────────────────────────────────────
+        // Occupancy-sensing + per-square LED move indication. No piece identity.
+        // Hardware-unverified: awaiting physical-board or BLE capture-log.
+        .target(
+            name: "PegasusAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/PegasusAdapter"
+        ),
+
+        // ── Millennium adapter ────────────────────────────────────────────────
+        // Piece identity via Hall sensors; 9×9 corner LED grid for move
+        // indication. BLE + USB-HID connection modes.
+        // Hardware-unverified: awaiting physical-board or capture-log.
+        .target(
+            name: "MillenniumAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/MillenniumAdapter"
+        ),
+
+        // ── Certabo adapter ───────────────────────────────────────────────────
+        // RFID piece identity; per-square LEDs (classic) or 9×9 corner-LED
+        // grid (Spectrum RGB). USB serial, BT Classic RFCOMM, and BLE byte
+        // pipe — transport-agnostic. Tabutronic Sentio occupancy family also
+        // supported. Hardware-unverified: awaiting physical-board or capture-log.
+        .target(
+            name: "CertaboAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/CertaboAdapter"
+        ),
+
+        // ── ChessUp adapter ───────────────────────────────────────────────────
+        // Per-square LEDs; piece identity TBD. BLE connection.
+        // Hardware-unverified: awaiting physical-board or BLE capture-log.
+        .target(
+            name: "ChessUpAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/ChessUpAdapter"
+        ),
+
         // ── Test support library ──────────────────────────────────────────────
         .target(
             name: "BoardKitTestSupport",
@@ -101,6 +167,10 @@ let package = Package(
                 "BoardKit",
                 "SquareOffAdapter",
                 "ChessnutAdapter",
+                "PegasusAdapter",
+                "MillenniumAdapter",
+                "CertaboAdapter",
+                "ChessUpAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
             ],

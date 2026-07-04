@@ -47,8 +47,25 @@ public enum ChessnutGATT {
     public static let fileChar            = "1b7e8283-2877-41c3-b46e-cf057c562023"
 
     /// Returns `true` when `name` belongs to the Air-family classic profile.
+    ///
+    /// Classic boards advertise names with a "Chessnut" prefix:
+    /// "Chessnut Air", "Chessnut Air+", "Chessnut Pro", "Chessnut Go".
+    /// Profile selection MUST use exact-name or prefix logic; all UUIDs are
+    /// shared with the Move profile so UUID inspection cannot distinguish them.
     public static func isClassicProfile(name: String) -> Bool {
         name.hasPrefix("Chessnut") && name != "Chessnut Move"
+    }
+
+    /// Returns `true` when `name` is the Chessnut Move profile.
+    ///
+    /// The Move advertises exactly `"Chessnut Move"`.  Because it shares all
+    /// GATT UUIDs with the classic profile, name-based detection is the only
+    /// way to select the correct adapter.
+    ///
+    /// Source: chess_move_api README (official); cross-checked against
+    /// EasyLinkSwiftSDK `CoreBluetoothEasyLinkTransport` name filter.
+    public static func isMoveProfile(name: String) -> Bool {
+        name == "Chessnut Move"
     }
 }
 
@@ -73,48 +90,14 @@ private enum Opcode {
 
 // MARK: - Piece-code table
 //
-// Nibble → Piece? mapping, verbatim from all three sources.
-// The ordering is deliberately irregular (white R=6 among the black codes;
-// black r=8 among the white codes). Do not normalise.
+// Delegated to ChessnutShared.swift (`chessnutFENPieceByCode` /
+// `chessnutFENCodeForPiece`).  Kept here only as a comment so the file
+// structure remains legible.
 //
-// [OFFICIAL-DOC] §piece encoding; [C-REF] CHESS_PIECES[]; [SWIFT-REF] pieceByCode.
-// All three sources are byte-for-byte identical.
-
-private let pieceByCode: [UInt8: Piece] = [
-    0x1: Piece(type: .queen,  color: .black),
-    0x2: Piece(type: .king,   color: .black),
-    0x3: Piece(type: .bishop, color: .black),
-    0x4: Piece(type: .pawn,   color: .black),
-    0x5: Piece(type: .knight, color: .black),
-    0x6: Piece(type: .rook,   color: .white),  // white rook at index 6, not 8
-    0x7: Piece(type: .pawn,   color: .white),
-    0x8: Piece(type: .rook,   color: .black),  // black rook at index 8, not 6
-    0x9: Piece(type: .bishop, color: .white),
-    0xA: Piece(type: .knight, color: .white),
-    0xB: Piece(type: .queen,  color: .white),
-    0xC: Piece(type: .king,   color: .white),
-    // 0x0 = empty; 0xD–0xF = invalid (SWIFT-REF throws on these; we emit .raw)
-]
-
-/// Reverse lookup: `Piece → nibble code` for position encoding (test helpers,
-/// future position-set commands).
-private func codeForPiece(_ piece: Piece?) -> UInt8 {
-    guard let piece else { return 0x0 }
-    switch (piece.type, piece.color) {
-    case (.queen,  .black): return 0x1
-    case (.king,   .black): return 0x2
-    case (.bishop, .black): return 0x3
-    case (.pawn,   .black): return 0x4
-    case (.knight, .black): return 0x5
-    case (.rook,   .white): return 0x6
-    case (.pawn,   .white): return 0x7
-    case (.rook,   .black): return 0x8
-    case (.bishop, .white): return 0x9
-    case (.knight, .white): return 0xA
-    case (.queen,  .white): return 0xB
-    case (.king,   .white): return 0xC
-    }
-}
+// Nibble → Piece mapping, verified byte-for-byte against all three sources:
+//   [OFFICIAL-DOC] §piece encoding; [C-REF] CHESS_PIECES[]; [SWIFT-REF] pieceByCode.
+// Layout is deliberately irregular (white R=6 at index 6, black r=8 at index 8).
+// Do not normalise.  See ChessnutShared.swift for the shared implementation.
 
 // MARK: - ChessnutAdapter
 
@@ -292,28 +275,25 @@ public struct ChessnutAdapter: BoardAdapter {
         ])
     }
 
-    /// Encode a position as a 36-byte Chessnut board-state frame.
+    /// Encode a position as a 36-byte Chessnut classic board-state frame.
     ///
     /// The inverse of the frame decoder. Used by test harnesses and
     /// capture-log tooling — not normally sent over the wire (the board
     /// pushes these, not the host).
     ///
     /// `identity` must be 64 elements in file-major order (a1=0…h8=63).
+    ///
+    /// Frame layout: `[0x01, 0x22, board[0..31], 0x00, 0x00]`
+    /// The 32 board bytes use the shared `chessnutEncodeBoard` codec.
+    /// For the Move profile's 38-byte frame, use `ChessnutMoveAdapter.encodeFrame`.
     public static func encodeFrame(identity: [Piece?]) -> Data {
         precondition(identity.count == 64, "identity must be 64 elements")
         var frame = [UInt8](repeating: 0, count: 36)
         frame[0] = Opcode.boardState
         frame[1] = 0x22  // payload length = 34 (32 board + 2 trailing zeros)
-        for s in 0..<64 {
-            let piece = pieceAt(fileMajorIndex: protocolSquareToFileMajor(s), in: identity)
-            let code = codeForPiece(piece)
-            let byteIndex = 2 + s / 2
-            if s % 2 == 0 {
-                frame[byteIndex] |= code & 0x0F           // low nibble
-            } else {
-                frame[byteIndex] |= (code & 0x0F) << 4   // high nibble
-            }
-        }
+        let board = chessnutEncodeBoard(identity: identity)
+        frame.replaceSubrange(2..<34, with: board)
+        // bytes[34..35] remain 0x00 (trailing zeros in classic format)
         return Data(frame)
     }
 
@@ -359,23 +339,10 @@ public struct ChessnutAdapter: BoardAdapter {
         //       events.count == 1, which re-emitted .ready on every tick.
         let isFirstFrame = (previousIdentity == nil)
 
-        // Decode 64 squares.
-        var identity = [Piece?](repeating: nil, count: 64)
-        var hasInvalidNibble = false
-        for s in 0..<64 {
-            let byteIndex = 2 + s / 2
-            let nibble: UInt8 = s % 2 == 0
-                ? frame[byteIndex] & 0x0F     // s even → low nibble
-                : frame[byteIndex] >> 4       // s odd  → high nibble
-            if nibble > 0xC {
-                // 0xD–0xF are invalid per spec. [SWIFT-REF] throws; we flag
-                // the frame but still emit what we decoded (conservative).
-                hasInvalidNibble = true
-                continue
-            }
-            let fileMajor = Self.protocolSquareToFileMajor(s)
-            identity[fileMajor] = pieceByCode[nibble]
-        }
+        // Decode 64 squares via shared codec (ChessnutShared.swift).
+        // 0xD–0xF nibbles are flagged but the rest of the frame is still used.
+        // [SWIFT-REF] throws on invalid nibbles; we continue conservatively.
+        let (identity, hasInvalidNibble) = chessnutDecodeBoard(from: frame, start: 2)
 
         // Build events.
         var events: [BoardEvent] = []
@@ -383,28 +350,11 @@ public struct ChessnutAdapter: BoardAdapter {
         // Always emit the full snapshot first.
         events.append(.identitySnapshot(identity))
 
-        // Emit squareSensed deltas vs the previous snapshot.
+        // Emit squareSensed deltas vs the previous snapshot (shared helper).
         if let prev = previousIdentity {
-            let files = Array("abcdefgh")
-            for file in 0..<8 {
-                for rank in 0..<8 {
-                    let idx = file * 8 + rank   // file-major
-                    let prevPiece = prev[idx]
-                    let curPiece  = identity[idx]
-                    if prevPiece == nil && curPiece != nil {
-                        // Square went from empty to occupied → place event.
-                        let sq = "\(files[file])\(rank + 1)"
-                        events.append(.squareSensed(square: sq, isLift: false, piece: curPiece))
-                    } else if prevPiece != nil && curPiece == nil {
-                        // Square went from occupied to empty → lift event.
-                        // Piece is what was previously there (it's being lifted).
-                        let sq = "\(files[file])\(rank + 1)"
-                        events.append(.squareSensed(square: sq, isLift: true, piece: prevPiece))
-                    }
-                    // Same state (both nil or same piece): no delta.
-                }
-            }
+            events += chessnutDeltaEvents(prev: prev, curr: identity)
         }
+
         // First frame with invalid nibble: still emit what we have, but flag it.
         if hasInvalidNibble {
             events.append(.raw(Data(frame)))
@@ -475,28 +425,16 @@ public struct ChessnutAdapter: BoardAdapter {
     /// Convert a Chessnut protocol square index `s` (0=h8…63=a1) to the
     /// file-major index used by `BoardEvent` (a1=0…h8=63).
     ///
-    /// Protocol square formula:
-    ///   `s = (8 − rank) × 8 + (7 − file)`   (rank 1-indexed, file a=0…h=7)
+    /// Delegates to `chessnutProtocolSquareToFileMajor` in ChessnutShared.swift.
+    /// Kept as a public-facing static on the type for backward compatibility
+    /// with test code that calls `ChessnutAdapter.protocolSquareToFileMajor`.
     ///
-    /// Inverse:
-    ///   `file = 7 − (s % 8)`
-    ///   `rank = 7 − (s / 8)`  (0-indexed)
-    ///
-    /// File-major index: `file × 8 + rank` (rank 0-indexed).
-    ///
-    /// Sentinel check (from spec):
-    ///   s=0 → h8 → file=7, rank=7 → fileMajor=63
-    ///   s=63 → a1 → file=0, rank=0 → fileMajor=0
-    ///   s=35 → e4 → file=4, rank=3 → fileMajor=35
-    ///   s=59 → e1 → file=4, rank=0 → fileMajor=32
+    /// Sentinel checks (from spec):
+    ///   s=0  → h8 → fileMajor=63
+    ///   s=63 → a1 → fileMajor=0
+    ///   s=35 → e4 → fileMajor=35
+    ///   s=59 → e1 → fileMajor=32
     static func protocolSquareToFileMajor(_ s: Int) -> Int {
-        let file = 7 - (s % 8)
-        let rank = 7 - (s / 8)   // 0-indexed
-        return file * 8 + rank
-    }
-
-    private static func pieceAt(fileMajorIndex: Int, in identity: [Piece?]) -> Piece? {
-        guard (0..<64).contains(fileMajorIndex) else { return nil }
-        return identity[fileMajorIndex]
+        chessnutProtocolSquareToFileMajor(s)
     }
 }

@@ -14,7 +14,7 @@
 /// | Chessnut Pro     | ✓         | ✓        | ✓             | ✓              |           | ✓       |          |
 /// | Chessnut Go      | ✓         | ✓        | ✓             | ✓              |           | ✓       |          |
 /// | Chessnut Move    | ✓         | ✓        | ✓             | ✓              | ✓         | ✓       | ✓        |
-/// | DGT Pegasus      | ✓         |          |               | ✓ (corner)     |           |         |          |
+/// | DGT Pegasus      | ✓         |          | ✓             | ✓              |           | ✓       |          |
 /// | Millennium       | ✓         | ✓        |               | ✓ (9×9 corner) |           |         |          |
 /// | Certabo          | ✓         | ✓        | ✓             | ✓              |           |         |          |
 ///
@@ -54,9 +54,14 @@ public struct BoardCapabilities: OptionSet, Sendable {
     public static let batteryReporting = BoardCapabilities(rawValue: 1 << 5)
 
     /// True per-piece unique identity (Chessnut Move's 34 micro-robot
-    /// pieces). Implies `.pieceIdentity`. When set, `identitySnapshot`
-    /// tracks individual piece objects across moves rather than just
-    /// type+colour per square.
+    /// pieces). Implies `.pieceIdentity`. The board supports per-piece
+    /// status polling via opcode 0x0B; the adapter surfaces those
+    /// responses as `.raw` pending a dedicated `BoardEvent` case.
+    /// `identitySnapshot` carries type+colour per square (same as
+    /// `.pieceIdentity`), not per-robot object identity.  Session code
+    /// should use `BoardAdapter.pieceStatusRequestData()` and parse
+    /// `.raw` payloads directly rather than expecting `identitySnapshot`
+    /// to carry per-robot tracking data.
     public static let perPieceTracking = BoardCapabilities(rawValue: 1 << 6)
 
     // MARK: - Convenience presets

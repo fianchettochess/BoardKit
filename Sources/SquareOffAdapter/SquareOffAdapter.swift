@@ -2,6 +2,21 @@ import Foundation
 import ChessCore
 import BoardKit
 
+// ── Square Off board adapter ──────────────────────────────────────────────────
+//
+// Covers Square Off Pro, Kingdom Set (GKS), and Gen-1 motorised boards.
+//
+// HARDWARE STATUS: Battle-tested in-app (Fianchetto iOS/Android production).
+// Protocol codec migrated from the FianchettoKit SquareOffTransport on
+// 2026-07-03; field-verified against physical Square Off Pro and GKS hardware.
+// executeMove quarantined (motor semantics unverified); all other BoardAdapter
+// methods are production-grade.
+//
+// Sources:
+//   Protocol reverse-engineered in-app from captured BLE traffic and field
+//   testing on physical Square Off Pro and Kingdom Set boards. No third-party
+//   driver consulted (first-party reverse engineering only).
+
 /// `BoardAdapter` implementation for the Square Off Pro (and compatible GKS / Gen-1)
 /// family of boards.
 ///
@@ -29,7 +44,9 @@ import BoardKit
 ///   - `.custom(data)` → `data` verbatim
 ///
 /// **handshakeCommands(isReconnect:)** encodes the safe reconnect rule:
-///   - First connect:  `[(.startSession, 0), (.requestState, 150ms)]`
+///   - First connect:  `[(.startSession, 250ms), (.requestState, 150ms)]`
+///     (the 250ms is the hardware-proven link-settle delay both app
+///     transports used as `asyncAfter(0.25)` — do NOT "optimize" it away)
 ///   - Reconnect:      `[(.requestState, 250ms)]`  (NO startNewGame — board state preserved)
 ///
 /// ## Capabilities
