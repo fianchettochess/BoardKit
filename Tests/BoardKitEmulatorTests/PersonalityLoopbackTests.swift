@@ -11,6 +11,10 @@ import ChessCore
 import BoardKit
 import SquareOffAdapter
 import ChessnutAdapter
+import PegasusAdapter
+import MillenniumAdapter
+import CertaboAdapter
+import ChessUpAdapter
 import BoardKitTestSupport
 import BoardKitEmulator
 
@@ -208,6 +212,376 @@ private let loopbackMoves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1
         #expect(decoded[1].piece == Piece(type: .queen, color: .white))
     }
 }
+
+// MARK: - Pegasus loop-back
+
+/// Simple non-capture moves: one field-update frame per squareSensed event.
+private let pegasusSimpleMoves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1g1"]
+
+@Test func pegasusLoopbackReproducesGroundTruth() async throws {
+    var personality = PegasusPersonality()
+    var hostAdapter = PegasusAdapter()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing])
+
+    // Prime the host adapter with the initial board dump (seeds previousOccupancy).
+    let initialSnapshot = await sim.boardSnapshot()
+    var primeWire = Data()
+    for frame in personality.frames(for: initialSnapshot) { primeWire.append(frame.data) }
+    let primeEvents = hostAdapter.feed(bytes: primeWire)
+    #expect(primeEvents.contains { if case .ready = $0 { return true }; return false })
+
+    for uci in pegasusSimpleMoves {
+        let groundTruth = try await sim.executeMove(uci: uci)
+        var wire = Data()
+        for event in groundTruth {
+            for frame in personality.frames(for: event) {
+                #expect(frame.characteristicUUID == PegasusPersonality.notifyCharUUID)
+                wire.append(frame.data)
+            }
+        }
+        let decoded = hostAdapter.feed(bytes: wire)
+        let decodedTuples = sensedTuples(decoded)
+        let truthTuples   = sensedTuples(groundTruth)
+        #expect(decodedTuples.count == truthTuples.count, "move \(uci)")
+        for (d, t) in zip(decodedTuples, truthTuples) {
+            #expect(d.square == t.square, "move \(uci)")
+            #expect(d.isLift == t.isLift,  "move \(uci)")
+            #expect(d.piece  == nil, "Pegasus must not invent piece identity")
+        }
+    }
+}
+
+@Test func pegasusLoopbackCaptureViaFieldUpdates() async throws {
+    // Capture: ground truth has 3 events (lift captured, lift attacker, place).
+    // Pegasus emits one field-update per event; host adapter decodes each one.
+    let fen = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+    let sim = SimulatedBoard(position: Position(fen: fen)!, capabilities: [.occupancySensing])
+    var personality = PegasusPersonality()
+    var hostAdapter = PegasusAdapter()
+
+    // Prime.
+    let snapshot = await sim.boardSnapshot()
+    _ = hostAdapter.feed(bytes: personality.frames(for: snapshot).reduce(Data()) { $0 + $1.data })
+
+    let groundTruth = try await sim.executeMove(uci: "e4d5")
+    var wire = Data()
+    for event in groundTruth { for frame in personality.frames(for: event) { wire.append(frame.data) } }
+    let decoded = hostAdapter.feed(bytes: wire)
+    let decodedTuples = sensedTuples(decoded)
+    let truthTuples   = sensedTuples(groundTruth)
+    #expect(decodedTuples.count == truthTuples.count, "capture event count mismatch")
+    for (d, t) in zip(decodedTuples, truthTuples) {
+        #expect(d.square == t.square)
+        #expect(d.isLift == t.isLift)
+    }
+}
+
+// MARK: - Millennium loop-back
+
+@Test func millenniumLoopbackReproducesGroundTruth() async throws {
+    var personality = MillenniumPersonality()
+    var hostAdapter = MillenniumAdapter()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
+
+    // Prime the host adapter with the initial s-frame (seeds previousIdentity + .ready).
+    let initialSnapshot = await sim.boardSnapshot()
+    var primeWire = Data()
+    for frame in personality.frames(for: initialSnapshot) { primeWire.append(frame.data) }
+    let primeEvents = hostAdapter.feed(bytes: primeWire)
+    #expect(primeEvents.contains { if case .ready = $0 { return true }; return false })
+
+    for uci in loopbackMoves {
+        let groundTruth = try await sim.executeMove(uci: uci)
+        var decodedTuples: [(square: String, isLift: Bool, piece: Piece?)] = []
+        for event in groundTruth {
+            for frame in personality.frames(for: event) {
+                #expect(frame.characteristicUUID == MillenniumPersonality.notifyCharUUID)
+                decodedTuples += sensedTuples(hostAdapter.feed(bytes: frame.data))
+            }
+        }
+        let truthTuples = sensedTuples(groundTruth)
+        #expect(decodedTuples.count == truthTuples.count, "move \(uci)")
+        for (d, t) in zip(decodedTuples, truthTuples) {
+            #expect(d.square == t.square, "move \(uci)")
+            #expect(d.isLift == t.isLift,  "move \(uci)")
+            #expect(d.piece  == t.piece,   "move \(uci)")
+        }
+    }
+}
+
+@Test func millenniumMirrorSurvivesChaosStreams() async throws {
+    var personality = MillenniumPersonality()
+    let cases = try await generateGameCases(seed: 22, maxPlies: 30)
+    let engine = ChaosEngine(profile: .clumsy)
+    var rng = SeededRNG(seed: 22)
+    for corpusCase in cases {
+        let perturbation = engine.perturb(corpusCase.context, rng: &rng)
+        for event in perturbation.events {
+            _ = personality.frames(for: .squareSensed(square: event.square,
+                                                      isLift: event.isLift,
+                                                      piece: event.piece))
+        }
+        var after = corpusCase.positionBefore
+        MoveGenerator.applyMoveUnchecked(&after, corpusCase.move)
+        let expected = BoardDiffResolver.occupancyArray(for: after)
+        let mirrored = personality.identityMirror.map { $0 != nil }
+        #expect(mirrored == expected,
+                "millennium mirror drifted after \(corpusCase.uci): \(perturbation.appliedPatterns)")
+    }
+}
+
+// MARK: - Certabo loop-back
+
+/// Build a canonical test calibration: deterministic tag IDs for all 32 start-position pieces.
+///
+/// Tag format: (pieceKind, color, 1, 0, 0) — unique per (kind, color) pair.
+func makeTestCalibration() -> CertaboCalibration {
+    let allPieces: [Piece] = [
+        Piece(type: .king,   color: .white), Piece(type: .queen,  color: .white),
+        Piece(type: .rook,   color: .white), Piece(type: .knight, color: .white),
+        Piece(type: .bishop, color: .white), Piece(type: .pawn,   color: .white),
+        Piece(type: .king,   color: .black), Piece(type: .queen,  color: .black),
+        Piece(type: .rook,   color: .black), Piece(type: .knight, color: .black),
+        Piece(type: .bishop, color: .black), Piece(type: .pawn,   color: .black),
+    ]
+    var map: [CertaboTagID: Piece] = [:]
+    for (i, piece) in allPieces.enumerated() {
+        // b1=1 for white, b1=2 for black. Never use 0 for b1 — combined with
+        // b3=0 and b4=0 that would give ≥3 zero bytes, triggering the
+        // CertaboTagID.isEffectivelyEmpty heuristic and silently dropping all
+        // black-piece events (D7 secondary heuristic: ≥3 zeros → treat as empty).
+        let b1: UInt8 = piece.color == .white ? 1 : 2
+        map[CertaboTagID(UInt8(i + 1), b1, 84, 0, 0)] = piece
+    }
+    return CertaboCalibration(tagToPieceMap: map)
+}
+
+@Test func certaboLoopbackReproducesGroundTruth() async throws {
+    let cal = makeTestCalibration()
+    var personality = CertaboPersonality(calibration: cal)
+    var hostAdapter = CertaboAdapter(calibration: cal)
+    let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
+
+    // Prime the host adapter with the initial RFID frame.
+    let initialSnapshot = await sim.boardSnapshot()
+    var primeWire = Data()
+    for frame in personality.frames(for: initialSnapshot) { primeWire.append(frame.data) }
+    let primeEvents = hostAdapter.feed(bytes: primeWire)
+    #expect(primeEvents.contains { if case .ready = $0 { return true }; return false })
+
+    for uci in loopbackMoves {
+        let groundTruth = try await sim.executeMove(uci: uci)
+        var decodedTuples: [(square: String, isLift: Bool, piece: Piece?)] = []
+        for event in groundTruth {
+            for frame in personality.frames(for: event) {
+                #expect(frame.characteristicUUID == CertaboPersonality.notifyCharUUID)
+                decodedTuples += sensedTuples(hostAdapter.feed(bytes: frame.data))
+            }
+        }
+        let truthTuples = sensedTuples(groundTruth)
+        #expect(decodedTuples.count == truthTuples.count, "move \(uci)")
+        for (d, t) in zip(decodedTuples, truthTuples) {
+            #expect(d.square == t.square, "move \(uci)")
+            #expect(d.isLift == t.isLift,  "move \(uci)")
+            #expect(d.piece  == t.piece,   "move \(uci)")
+        }
+    }
+}
+
+@Test func certaboUncalibratedLoopbackOccupancy() async throws {
+    // Without calibration: Tabutronic 8-token frames → occupancy snapshots.
+    var personality = CertaboPersonality(calibration: nil)
+    var hostAdapter = CertaboAdapter(calibration: nil)
+    let sim = SimulatedBoard(capabilities: [.occupancySensing])
+
+    // Prime.
+    let initial = await sim.boardSnapshot()
+    _ = hostAdapter.feed(bytes: personality.frames(for: initial).reduce(Data()) { $0 + $1.data })
+
+    for uci in ["e2e4", "e7e5", "g1f3"] {
+        let groundTruth = try await sim.executeMove(uci: uci)
+        var wire = Data()
+        for event in groundTruth { for frame in personality.frames(for: event) { wire.append(frame.data) } }
+        let decoded = hostAdapter.feed(bytes: wire)
+        // Certabo occupancy frames emit squareSensed deltas after first frame.
+        let decodedTuples = sensedTuples(decoded)
+        let truthTuples   = sensedTuples(groundTruth)
+        #expect(decodedTuples.count == truthTuples.count, "uncalibrated move \(uci)")
+        for (d, t) in zip(decodedTuples, truthTuples) {
+            #expect(d.square == t.square)
+            #expect(d.isLift == t.isLift)
+        }
+    }
+}
+
+@Test func certaboRGBLEDDecodeFiltersSpillovere2e4() {
+    // Regression: e2 + e4 must decode to exactly those two squares.
+    // Before the fix, the shared corners between e2 and e4 made e3's
+    // four blue-channel indices all nonzero, producing a spurious e3.
+    var personality = CertaboPersonality()
+
+    // Build a 247-byte RGB LED frame encoding e2 and e4 only,
+    // using the same formula as CertaboAdapter.encodeRGBLED (MIT source).
+    var payload = [UInt8](repeating: 0, count: 243)
+    for algebraic in ["e2", "e4"] {
+        guard let sq = Square(algebraic: algebraic) else { continue }
+        let streamIdx = (7 - sq.rank) * 8 + sq.file
+        let row = 7 - streamIdx / 8
+        let col = 7 - streamIdx % 8
+        let base = (row * 9 + col) * 3
+        for cornerBase in [base, base + 3, base + 27, base + 30] {
+            let blueOff = cornerBase + 2
+            if blueOff < payload.count { payload[blueOff] = 0x40 }
+        }
+    }
+    var frame = Data([0xFF, 0x55])
+    frame.append(contentsOf: payload)
+    frame.append(contentsOf: [0x0D, 0x0A])
+
+    let actions = personality.handleHostWrite(frame)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected .setLEDs, got \(actions)")
+        return
+    }
+    let sorted = squares.sorted()
+    #expect(sorted == ["e2", "e4"], "spillover filter failed: got \(sorted)")
+}
+
+// MARK: - ChessUp loop-back
+
+@Test func chessUpLoopbackOccupancySnapshots() async throws {
+    // ChessUp emits 0x67 board-state frames; host adapter decodes as occupancy snapshots.
+    // We verify that after each move the final occupancy matches the expected position.
+    var personality = ChessUpPersonality()
+    var hostAdapter = ChessUpAdapter()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing])
+
+    // Prime via GET_STATE response (seeds .ready in host adapter).
+    let getState = Data([0x67])
+    let primeActions = personality.handleHostWrite(getState)
+    if case .notify(let frame) = primeActions.first {
+        let primeEvents = hostAdapter.feed(bytes: frame.data)
+        #expect(primeEvents.contains { if case .ready = $0 { return true }; return false })
+    }
+
+    // Note: castling (e1g1) requires f1 to be clear; f1c4 opens that path.
+    for uci in ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4"] {
+        let groundTruth = try await sim.executeMove(uci: uci)
+        // Feed all events through personality to update its occupancy mirror.
+        var lastOccupancy: [Bool]? = nil
+        for event in groundTruth {
+            for frame in personality.frames(for: event) {
+                #expect(frame.characteristicUUID == ChessUpPersonality.notifyCharUUID)
+                let decoded = hostAdapter.feed(bytes: frame.data)
+                for decodedEvent in decoded {
+                    if case .occupancySnapshot(let occ) = decodedEvent { lastOccupancy = occ }
+                }
+            }
+        }
+        // After all events for this move, occupancy must match the post-move position.
+        let afterPos = await sim.position
+        let expectedOcc = BoardDiffResolver.occupancyArray(for: afterPos)
+        if let occ = lastOccupancy {
+            #expect(occ == expectedOcc, "ChessUp occupancy mismatch after \(uci)")
+        } else {
+            Issue.record("ChessUp: no occupancy snapshot decoded after \(uci)")
+        }
+    }
+}
+
+@Test func chessUpLoopbackChaosKernelSurvival() async throws {
+    // Feed chaos-perturbed streams through ChessUp personality and verify the
+    // occupancy mirror lands on the expected position after each move — matching
+    // the pattern of chessnutMirrorSurvivesChaosStreams / millenniumMirrorSurvivesChaosStreams.
+    var personality = ChessUpPersonality()
+    let cases = try await generateGameCases(seed: 23, maxPlies: 30)
+    let engine = ChaosEngine(profile: .casual)
+    var rng = SeededRNG(seed: 23)
+    for corpusCase in cases {
+        let perturbation = engine.perturb(corpusCase.context, rng: &rng)
+        for event in perturbation.events {
+            _ = personality.frames(for: .squareSensed(square: event.square,
+                                                      isLift: event.isLift, piece: nil))
+        }
+        var after = corpusCase.positionBefore
+        MoveGenerator.applyMoveUnchecked(&after, corpusCase.move)
+        let expected = BoardDiffResolver.occupancyArray(for: after)
+        #expect(personality.occupancyMirror == expected,
+                "chessup occupancy mirror drifted after \(corpusCase.uci): \(perturbation.appliedPatterns)")
+    }
+}
+
+// MARK: - Pegasus chaos-corpus
+
+@Test func pegasusMirrorSurvivesChaosStreams() async throws {
+    // Occupancy-only board: mirror must track the net occupancy state through
+    // all tolerated chaos patterns (lift-and-return, order swaps, etc.).
+    var personality = PegasusPersonality()
+    let cases = try await generateGameCases(seed: 24, maxPlies: 30)
+    let engine = ChaosEngine(profile: .clumsy)
+    var rng = SeededRNG(seed: 24)
+    for corpusCase in cases {
+        let perturbation = engine.perturb(corpusCase.context, rng: &rng)
+        for event in perturbation.events {
+            _ = personality.frames(for: .squareSensed(square: event.square,
+                                                      isLift: event.isLift, piece: nil))
+        }
+        var after = corpusCase.positionBefore
+        MoveGenerator.applyMoveUnchecked(&after, corpusCase.move)
+        let expected = BoardDiffResolver.occupancyArray(for: after)
+        #expect(personality.occupancyMirror == expected,
+                "pegasus occupancy mirror drifted after \(corpusCase.uci): \(perturbation.appliedPatterns)")
+    }
+}
+
+// MARK: - Certabo chaos-corpus
+
+@Test func certaboRFIDMirrorSurvivesChaosStreams() async throws {
+    // Calibrated (RFID) mode: identity mirror must track piece occupancy through
+    // all tolerated chaos patterns — same guarantee as Chessnut/Millennium.
+    let cal = makeTestCalibration()
+    var personality = CertaboPersonality(calibration: cal)
+    let cases = try await generateGameCases(seed: 25, maxPlies: 30)
+    let engine = ChaosEngine(profile: .clumsy)
+    var rng = SeededRNG(seed: 25)
+    for corpusCase in cases {
+        let perturbation = engine.perturb(corpusCase.context, rng: &rng)
+        for event in perturbation.events {
+            _ = personality.frames(for: .squareSensed(square: event.square,
+                                                      isLift: event.isLift,
+                                                      piece: event.piece))
+        }
+        var after = corpusCase.positionBefore
+        MoveGenerator.applyMoveUnchecked(&after, corpusCase.move)
+        let expected = BoardDiffResolver.occupancyArray(for: after)
+        let mirrored = personality.identityMirror.map { $0 != nil }
+        #expect(mirrored == expected,
+                "certabo identity mirror drifted after \(corpusCase.uci): \(perturbation.appliedPatterns)")
+    }
+}
+
+@Test func certaboOccupancyMirrorSurvivesChaosStreams() async throws {
+    // Uncalibrated (Tabutronic-style) mode: occupancy mirror must track the
+    // net occupancy state through all tolerated chaos patterns.
+    var personality = CertaboPersonality(calibration: nil)
+    let cases = try await generateGameCases(seed: 26, maxPlies: 30)
+    let engine = ChaosEngine(profile: .clumsy)
+    var rng = SeededRNG(seed: 26)
+    for corpusCase in cases {
+        let perturbation = engine.perturb(corpusCase.context, rng: &rng)
+        for event in perturbation.events {
+            _ = personality.frames(for: .squareSensed(square: event.square,
+                                                      isLift: event.isLift, piece: nil))
+        }
+        var after = corpusCase.positionBefore
+        MoveGenerator.applyMoveUnchecked(&after, corpusCase.move)
+        let expected = BoardDiffResolver.occupancyArray(for: after)
+        #expect(personality.occupancyMirror == expected,
+                "certabo occupancy mirror drifted after \(corpusCase.uci): \(perturbation.appliedPatterns)")
+    }
+}
+
+// MARK: - Chessnut chaos-corpus
 
 @Test func chessnutMirrorSurvivesChaosStreams() async throws {
     // Feed chaos-perturbed (tolerated-profile) event streams through the

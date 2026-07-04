@@ -150,7 +150,7 @@ func millenniumFileMajorToK(_ fm: Int) -> Int {
 /// Square (file f=0..7, rank r=1..8) → corners at i∈{f, f+1}, j∈{8-r, 9-r}.
 /// Fixture 6: e2 (f=4, r=2) → LEDs 43,44,53,54. ✓
 /// Spec anchors: N=1→A8-corner [i=0,j=0]; N=9→A1; N=73→H8; N=81→H1. [MCHESS] §5.
-func millenniumSquareToCornerLEDs(file f: Int, rank r: Int) -> [Int] {
+public func millenniumSquareToCornerLEDs(file f: Int, rank r: Int) -> [Int] {
     let j0 = 8 - r
     let j1 = 9 - r
     return [

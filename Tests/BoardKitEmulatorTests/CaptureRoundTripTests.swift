@@ -6,6 +6,10 @@ import Foundation
 import ChessCore
 import BoardKit
 import SquareOffAdapter
+import PegasusAdapter
+import MillenniumAdapter
+import CertaboAdapter
+import ChessUpAdapter
 import BoardKitTestSupport
 import BoardKitEmulator
 
@@ -77,4 +81,164 @@ import BoardKitEmulator
     var recorder = CaptureRecorder()
     recorder.recordNotification(Data([0x01, 0x22, 0xAB, 0x00, 0xFF]))
     #expect(recorder.text == "rx 01 22 AB 00 FF\n")
+}
+
+// MARK: - Pegasus capture round-trip
+
+@Test func pegasusSessionCaptureReplaysThroughHostAdapter() async throws {
+    // Pegasus emits field-update frames; the host adapter decodes them as
+    // squareSensed events. Requires an initial board-dump frame to seed
+    // previousOccupancy in the adapter.
+    var personality = PegasusPersonality()
+    var recorder = CaptureRecorder()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing])
+
+    // Record initial board dump (seeds previousOccupancy in host adapter).
+    let initial = await sim.boardSnapshot()
+    for frame in personality.frames(for: initial) {
+        recorder.recordNotification(frame.data)
+    }
+
+    var truth: [(square: String, isLift: Bool, piece: Piece?)] = []
+    for uci in ["e2e4", "e7e5", "g1f3"] {
+        let events = try await sim.executeMove(uci: uci)
+        truth += sensedTuples(events)
+        for event in events {
+            for frame in personality.frames(for: event) {
+                recorder.recordNotification(frame.data, elapsedMs: 500)
+            }
+        }
+    }
+
+    let steps = try ReplayScript.parse(text: recorder.text)
+    let replay = ReplayTransport(adapter: PegasusAdapter(), parsedScript: steps)
+    let replayed = sensedTuples(replay.runSync())
+
+    #expect(replayed.count == truth.count, "Pegasus round-trip event count mismatch")
+    for (replayedEvent, truthEvent) in zip(replayed, truth) {
+        #expect(replayedEvent.square == truthEvent.square)
+        #expect(replayedEvent.isLift == truthEvent.isLift)
+    }
+}
+
+// MARK: - Millennium capture round-trip
+
+@Test func millenniumSessionCaptureReplaysThroughHostAdapter() async throws {
+    // Millennium emits s-frames (full board state) per event; the adapter
+    // diffs them against previousIdentity and emits squareSensed deltas.
+    // Requires an initial s-frame to seed previousIdentity.
+    var personality = MillenniumPersonality()
+    var recorder = CaptureRecorder()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
+
+    // Record initial s-frame (seeds previousIdentity + .ready in host adapter).
+    let initial = await sim.boardSnapshot()
+    for frame in personality.frames(for: initial) {
+        recorder.recordNotification(frame.data)
+    }
+
+    var truth: [(square: String, isLift: Bool, piece: Piece?)] = []
+    for uci in ["e2e4", "e7e5", "g1f3"] {
+        let events = try await sim.executeMove(uci: uci)
+        truth += sensedTuples(events)
+        for event in events {
+            for frame in personality.frames(for: event) {
+                recorder.recordNotification(frame.data, elapsedMs: 500)
+            }
+        }
+    }
+
+    let steps = try ReplayScript.parse(text: recorder.text)
+    let replay = ReplayTransport(adapter: MillenniumAdapter(), parsedScript: steps)
+    let replayed = sensedTuples(replay.runSync())
+
+    #expect(replayed.count == truth.count, "Millennium round-trip event count mismatch")
+    for (replayedEvent, truthEvent) in zip(replayed, truth) {
+        #expect(replayedEvent.square == truthEvent.square)
+        #expect(replayedEvent.isLift == truthEvent.isLift)
+        #expect(replayedEvent.piece == truthEvent.piece, "piece identity diverged @ \(truthEvent.square)")
+    }
+}
+
+// MARK: - Certabo capture round-trip
+
+@Test func certaboSessionCaptureReplaysThroughHostAdapter() async throws {
+    // Certabo emits 2 identical RFID frames per event (adapter uses a 3-frame
+    // majority vote to suppress transient noise). Requires an initial RFID
+    // frame pair to prime the vote history.
+    let cal = makeTestCalibration()
+    var personality = CertaboPersonality(calibration: cal)
+    var recorder = CaptureRecorder()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
+
+    // Record initial RFID frame pair (primes vote history + seeds .ready).
+    let initial = await sim.boardSnapshot()
+    for frame in personality.frames(for: initial) {
+        recorder.recordNotification(frame.data)
+    }
+
+    var truth: [(square: String, isLift: Bool, piece: Piece?)] = []
+    for uci in ["e2e4", "e7e5", "g1f3"] {
+        let events = try await sim.executeMove(uci: uci)
+        truth += sensedTuples(events)
+        for event in events {
+            for frame in personality.frames(for: event) {
+                recorder.recordNotification(frame.data, elapsedMs: 500)
+            }
+        }
+    }
+
+    let steps = try ReplayScript.parse(text: recorder.text)
+    let replay = ReplayTransport(adapter: CertaboAdapter(calibration: cal), parsedScript: steps)
+    let replayed = sensedTuples(replay.runSync())
+
+    #expect(replayed.count == truth.count, "Certabo round-trip event count mismatch")
+    for (replayedEvent, truthEvent) in zip(replayed, truth) {
+        #expect(replayedEvent.square == truthEvent.square)
+        #expect(replayedEvent.isLift == truthEvent.isLift)
+    }
+}
+
+// MARK: - ChessUp capture round-trip
+
+@Test func chessUpSessionCaptureReplaysThroughHostAdapter() async throws {
+    // ChessUp emits 0x67 board-state frames that the adapter decodes as
+    // occupancySnapshot events. The round-trip is verified by comparing the
+    // final occupancy snapshot to the expected position after all moves.
+    var personality = ChessUpPersonality()
+    var recorder = CaptureRecorder()
+    let sim = SimulatedBoard(capabilities: [.occupancySensing])
+
+    // Seed the personality's initial board-state frame via a GET_STATE probe,
+    // so the adapter sees the first 0x67 frame and emits .ready.
+    let primeActions = personality.handleHostWrite(Data([0x67]))
+    if case .notify(let frame) = primeActions.first {
+        recorder.recordNotification(frame.data)
+    }
+
+    var finalExpected: [Bool] = BoardDiffResolver.occupancyArray(for: Position.initial())
+    for uci in ["e2e4", "e7e5", "g1f3"] {
+        let events = try await sim.executeMove(uci: uci)
+        for event in events {
+            for frame in personality.frames(for: event) {
+                recorder.recordNotification(frame.data, elapsedMs: 500)
+            }
+        }
+        finalExpected = BoardDiffResolver.occupancyArray(for: await sim.position)
+    }
+
+    let steps = try ReplayScript.parse(text: recorder.text)
+    let replay = ReplayTransport(adapter: ChessUpAdapter(), parsedScript: steps)
+    let replayed = replay.runSync()
+
+    // Extract the last occupancySnapshot emitted by the adapter.
+    var lastOccupancy: [Bool]? = nil
+    for event in replayed {
+        if case .occupancySnapshot(let occ) = event { lastOccupancy = occ }
+    }
+    if let occ = lastOccupancy {
+        #expect(occ == finalExpected, "ChessUp round-trip: final occupancy mismatch")
+    } else {
+        Issue.record("ChessUp round-trip: no occupancySnapshot decoded from replay")
+    }
 }

@@ -1,5 +1,9 @@
 import Foundation
 import BoardKitTestSupport
+import PegasusAdapter
+import MillenniumAdapter
+import CertaboAdapter
+import ChessUpAdapter
 
 /// Hand-rolled CLI options (swift-argument-parser is intentionally not a
 /// dependency — BoardKit carries no third-party packages beyond ChessCore).
@@ -25,6 +29,10 @@ public struct EmulatorOptions: Sendable, Equatable {
     public enum BoardKind: String, Sendable {
         case squareoff
         case chessnut
+        case pegasus
+        case millennium
+        case certabo
+        case chessup
     }
 
     public var boardKind: BoardKind
@@ -52,7 +60,7 @@ public struct EmulatorOptions: Sendable, Equatable {
     public var pushStateEvery: Int? = nil
 
     public static let usage = """
-    usage: boardkit-emulator <squareoff|chessnut> [options]
+    usage: boardkit-emulator <squareoff|chessnut|pegasus|millennium|certabo|chessup> [options]
       --pgn <file>            play this PGN's main line (default: seeded random game)
       --seed <n>              chaos + random-game seed (default 0xF1A7)
       --chaos <profile>       clean | casual | clumsy | hostile (default casual)
@@ -91,7 +99,7 @@ public struct EmulatorOptions: Sendable, Equatable {
             throw UsageError("missing board kind\n\(usage)")
         }
         guard let kind = BoardKind(rawValue: first.lowercased()) else {
-            throw UsageError("unknown board kind '\(first)' (expected squareoff | chessnut)\n\(usage)")
+            throw UsageError("unknown board kind '\(first)' (expected squareoff | chessnut | pegasus | millennium | certabo | chessup)\n\(usage)")
         }
         var options = EmulatorOptions(boardKind: kind)
 
@@ -166,6 +174,14 @@ public struct EmulatorOptions: Sendable, Equatable {
         case .chessnut:
             return ChessnutPersonality(advertisedName: advertisedName ?? "Chessnut Air",
                                        batteryPercent: batteryPercent)
+        case .pegasus:
+            return PegasusPersonality(advertisedName: advertisedName ?? PegasusGATT.factoryNamePrefix)
+        case .millennium:
+            return MillenniumPersonality(advertisedName: advertisedName ?? MillenniumGATT.advertisedName)
+        case .certabo:
+            return CertaboPersonality(advertisedName: advertisedName ?? "Certabo")
+        case .chessup:
+            return ChessUpPersonality(advertisedName: advertisedName ?? "ChessUp")
         }
     }
 }

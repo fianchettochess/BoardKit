@@ -51,7 +51,7 @@ import BoardKitEmulator
 
 @Test func optionParsingRejectsBadInput() {
     if case .success = EmulatorOptions.parse([]) { Issue.record("empty argv must fail") }
-    if case .success = EmulatorOptions.parse(["pegasus"]) { Issue.record("unknown board must fail") }
+    if case .success = EmulatorOptions.parse(["dgt"]) { Issue.record("unknown board must fail") }
     if case .success = EmulatorOptions.parse(["squareoff", "--chaos", "medium"]) {
         Issue.record("unknown chaos profile must fail")
     }

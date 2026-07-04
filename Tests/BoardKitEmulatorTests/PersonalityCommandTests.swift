@@ -8,6 +8,10 @@ import ChessCore
 import BoardKit
 import SquareOffAdapter
 import ChessnutAdapter
+import PegasusAdapter
+import MillenniumAdapter
+import CertaboAdapter
+import ChessUpAdapter
 import BoardKitEmulator
 
 // MARK: - Square Off host commands
@@ -234,4 +238,258 @@ import BoardKitEmulator
     #expect(layout.writableCharacteristicUUIDs == [ChessnutGATT.commandWriteChar])
     // The advertised name must pass the host's classic-profile filter.
     #expect(ChessnutGATT.isClassicProfile(name: personality.advertisedName))
+}
+
+// MARK: - Pegasus host commands
+
+@Test func pegasusFieldUpdateModeIsStartNewGame() {
+    var personality = PegasusPersonality()
+    let write = PegasusAdapter().encode(.startSession)!  // 0x44
+    #expect(write == Data([0x44]))
+    let actions = personality.handleHostWrite(write)
+    #expect(actions.contains(.startNewGame))
+}
+
+@Test func pegasusBoardDumpRequestReturnsBoardDump() {
+    var personality = PegasusPersonality()
+    let write = PegasusAdapter().encode(.requestState)!  // 0x42
+    #expect(write == Data([0x42]))
+    let actions = personality.handleHostWrite(write)
+    #expect(actions.count == 1)
+    guard case .notify(let frame) = actions[0] else {
+        Issue.record("expected notify, got \(actions[0])"); return
+    }
+    #expect(frame.data.count == 67)
+    #expect(frame.data[0] == 0x86)
+    // Start position: ranks 1,2,7,8 occupied → 32 occupied squares.
+    let occupancyBytes = [UInt8](frame.data[3...])
+    #expect(occupancyBytes.filter { $0 != 0 }.count == 32)
+    // Round-trip through host adapter.
+    var host = PegasusAdapter()
+    let events = host.feed(bytes: frame.data)
+    guard case .occupancySnapshot(let occ) = events.first else {
+        Issue.record("host could not decode board dump"); return
+    }
+    #expect(occ.filter { $0 }.count == 32)
+}
+
+@Test func pegasusLEDCommandDecodesSquares() {
+    var personality = PegasusPersonality()
+    let adapter = PegasusAdapter()
+    // LED: e2 + e4.
+    let write = adapter.encode(.indicateSquares(["e2", "e4"], style: .highlight))!
+    let actions = personality.handleHostWrite(write)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected setLEDs, got \(actions)"); return
+    }
+    #expect(Set(squares) == Set(["e2", "e4"]))
+}
+
+@Test func pegasusLEDAllOffCommand() {
+    var personality = PegasusPersonality()
+    let write = PegasusAdapter().encode(.indicateSquares([], style: .highlight))!
+    let actions = personality.handleHostWrite(write)
+    #expect(actions == [.setLEDs([])])
+}
+
+@Test func pegasusUnknownCommandIsLogged() {
+    var personality = PegasusPersonality()
+    let actions = personality.handleHostWrite(Data([0x4D]))  // version request
+    #expect(actions.count == 1)
+    guard case .log = actions[0] else {
+        Issue.record("expected log, got \(actions[0])"); return
+    }
+}
+
+@Test func pegasusGATTMatchesAdapterConstants() {
+    let personality = PegasusPersonality()
+    let layout = personality.gattLayout
+    #expect(layout.services.count == 1)
+    #expect(layout.services[0].uuid == PegasusGATT.nordicUART)
+    #expect(layout.writableCharacteristicUUIDs == [PegasusGATT.writeChar])
+    #expect(layout.advertisedServiceUUIDs.contains(PegasusGATT.nordicUART))
+}
+
+// MARK: - Millennium host commands
+
+@Test func millenniumStateRequestReturnsSFrame() {
+    var personality = MillenniumPersonality()
+    let write = MillenniumAdapter.encodeStateRequest()  // "S" parity-encoded
+    let actions = personality.handleHostWrite(write)
+    guard case .notify(let frame) = actions.first else {
+        Issue.record("expected notify, got \(actions)"); return
+    }
+    #expect(frame.characteristicUUID == MillenniumPersonality.notifyCharUUID)
+    #expect(frame.data.count == 67)
+    // Round-trip: the s-frame must decode to .identitySnapshot + .ready on first feed.
+    var host = MillenniumAdapter()
+    let events = host.feed(bytes: frame.data)
+    let hasIdentity = events.contains { if case .identitySnapshot = $0 { return true }; return false }
+    #expect(hasIdentity, "host did not decode the s-frame to identitySnapshot")
+}
+
+@Test func millenniumLEDCommandDecodesSquares() {
+    var personality = MillenniumPersonality()
+    // Encode via the adapter (internal `millenniumLEDFrame` path).
+    let write = MillenniumAdapter().encode(.indicateSquares(["e2", "e4"], style: .highlight))!
+    #expect(write.count == 167)
+    let actions = personality.handleHostWrite(write)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected setLEDs, got \(actions)"); return
+    }
+    #expect(Set(squares) == Set(["e2", "e4"]))
+}
+
+@Test func millenniumExtinguishCommandClearsLEDs() {
+    var personality = MillenniumPersonality()
+    let write = MillenniumAdapter.encodeLEDOff()  // "X" parity-encoded
+    let actions = personality.handleHostWrite(write)
+    #expect(actions.contains(.setLEDs([])))
+}
+
+@Test func millenniumResetIsStartNewGame() {
+    var personality = MillenniumPersonality()
+    let write = MillenniumAdapter.encodeReset()  // "T" parity-encoded
+    let actions = personality.handleHostWrite(write)
+    #expect(actions.contains(.startNewGame))
+}
+
+@Test func millenniumVersionRequestIsLogged() {
+    var personality = MillenniumPersonality()
+    let write = MillenniumAdapter.encodeVersionRequest()
+    let actions = personality.handleHostWrite(write)
+    #expect(actions.count == 1)
+    guard case .log = actions[0] else {
+        Issue.record("expected log, got \(actions[0])"); return
+    }
+}
+
+@Test func millenniumGATTMatchesAdapterConstants() {
+    let personality = MillenniumPersonality()
+    let layout = personality.gattLayout
+    #expect(layout.services.count == 1)
+    #expect(layout.services[0].uuid == MillenniumGATT.serviceUUID)
+    #expect(layout.writableCharacteristicUUIDs == [MillenniumGATT.writeCharUUID])
+    #expect(personality.advertisedName == MillenniumGATT.advertisedName)
+    #expect(MillenniumGATT.isMillennium(name: personality.advertisedName))
+}
+
+// MARK: - Certabo host commands
+
+@Test func certaboClassicLEDDecodes() {
+    var personality = CertaboPersonality()
+    // 8-byte frame: e2 + e4 lit. [OFFICIAL]: byte[7-rank] |= 1 << file.
+    // e2: file=4, rank0=1 → byte[6] |= 1<<4 = 0x10
+    // e4: file=4, rank0=3 → byte[4] |= 1<<4 = 0x10
+    var ledBytes = [UInt8](repeating: 0, count: 8)
+    ledBytes[6] = 0x10   // e2
+    ledBytes[4] = 0x10   // e4
+    let write = Data(ledBytes)
+    let actions = personality.handleHostWrite(write)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected setLEDs, got \(actions)"); return
+    }
+    #expect(Set(squares) == Set(["e2", "e4"]))
+}
+
+@Test func certaboAllOffLEDDecodes() {
+    var personality = CertaboPersonality()
+    let write = Data(repeating: 0, count: 8)
+    let actions = personality.handleHostWrite(write)
+    #expect(actions == [.setLEDs([])])
+}
+
+@Test func certaboRoundTripLEDViaAdapter() {
+    var personality = CertaboPersonality()
+    var adapter = CertaboAdapter()
+    let encoded = adapter.encode(.indicateSquares(["a1", "h8"], style: .highlight))!
+    #expect(encoded.count == 8)
+    let actions = personality.handleHostWrite(encoded)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected setLEDs"); return
+    }
+    #expect(Set(squares) == Set(["a1", "h8"]))
+}
+
+@Test func certaboUnknownWriteIsLogged() {
+    var personality = CertaboPersonality()
+    let actions = personality.handleHostWrite(Data([0x01, 0x02, 0x03]))
+    #expect(actions.count == 1)
+    guard case .log = actions[0] else {
+        Issue.record("expected log, got \(actions[0])"); return
+    }
+}
+
+@Test func certaboGATTHasServiceAndWriteChar() {
+    let personality = CertaboPersonality()
+    let layout = personality.gattLayout
+    #expect(layout.services.count == 1)
+    #expect(layout.services[0].uuid == CertaboBT.serviceUUID)
+    #expect(layout.writableCharacteristicUUIDs == [CertaboPersonality.writeCharUUID])
+}
+
+// MARK: - ChessUp host commands
+
+@Test func chessUpGetStateReturns73ByteFrame() {
+    var personality = ChessUpPersonality()
+    let write = ChessUpAdapter().encode(.startSession)!  // Data([0x67])
+    #expect(write == Data([0x67]))
+    let actions = personality.handleHostWrite(write)
+    guard case .notify(let frame) = actions.first else {
+        Issue.record("expected notify, got \(actions)"); return
+    }
+    #expect(frame.data.count == 73)
+    #expect(frame.data[0] == 0x67)
+    // Round-trip: host adapter must decode as occupancySnapshot + .ready.
+    var host = ChessUpAdapter()
+    let events = host.feed(bytes: frame.data)
+    #expect(events.contains { if case .ready = $0 { return true }; return false })
+    guard let first = events.first, case .occupancySnapshot(let occ) = first else {
+        Issue.record("host did not decode 0x67 as occupancySnapshot"); return
+    }
+    #expect(occ.filter { $0 }.count == 32, "start position must have 32 occupied squares")
+}
+
+@Test func chessUpShowMoveDecodesSquares() {
+    var personality = ChessUpPersonality()
+    // Host encodes: .indicateSquares(["e2","e4"], style:) → [0x99, fromIdx, toIdx]
+    let write = ChessUpAdapter().encode(.indicateSquares(["e2", "e4"], style: .highlight))!
+    #expect(write == Data([0x99, 0x0C, 0x1C]))  // e2=12, e4=28
+    let actions = personality.handleHostWrite(write)
+    guard case .setLEDs(let squares) = actions.first else {
+        Issue.record("expected setLEDs, got \(actions)"); return
+    }
+    #expect(squares.count == 2)
+    #expect(Set(squares) == Set(["e2", "e4"]))
+}
+
+@Test func chessUpEnableStreamIsLogged() {
+    var personality = ChessUpPersonality()
+    let actions = personality.handleHostWrite(ChessUpAdapter.enableRawStreamData)
+    #expect(actions.count == 1)
+    guard case .log = actions[0] else {
+        Issue.record("expected log, got \(actions[0])"); return
+    }
+}
+
+@Test func chessUpGameSettingsIsLogged() {
+    var personality = ChessUpPersonality()
+    let settings = ChessUpAdapter.gameSettingsData(
+        mode: 5, whiteType: 0, whiteLevel: 1, whiteLock: 0,
+        blackType: 0, blackLevel: 1, blackLock: 0,
+        hintLimit: 0, whiteRemote: 0, blackRemote: 0, deviceUser: 0)
+    let actions = personality.handleHostWrite(settings)
+    #expect(actions.count == 1)
+    guard case .log = actions[0] else {
+        Issue.record("expected log for game settings"); return
+    }
+}
+
+@Test func chessUpGATTMatchesAdapterConstants() {
+    let personality = ChessUpPersonality()
+    let layout = personality.gattLayout
+    #expect(layout.services.count == 1)
+    #expect(layout.services[0].uuid == ChessUpGATT.nusService)
+    #expect(layout.writableCharacteristicUUIDs == [ChessUpGATT.nusRX])
+    #expect(ChessUpGATT.isChessUp(name: personality.advertisedName))
 }

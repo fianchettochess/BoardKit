@@ -168,6 +168,20 @@ public struct CertaboCalibration: Sendable {
     /// Create an empty (uncalibrated) calibration.
     public init() { self.tagToPiece = [:] }
 
+    /// Create a calibration directly from a tag-to-piece mapping.
+    ///
+    /// Use in tests and personality emulation to build a deterministic calibration
+    /// from a known set of tag IDs. In production, prefer `learn(from:standardStart:)`.
+    public init(tagToPieceMap: [CertaboTagID: Piece]) { self.tagToPiece = tagToPieceMap }
+
+    /// Returns the tag ID mapped to `piece` in this calibration, or `nil` if none.
+    ///
+    /// Scans the internal tag→piece map to invert it. Use for personality-side
+    /// RFID frame encoding where the piece→tag direction is needed.
+    public func tagID(for piece: Piece) -> CertaboTagID? {
+        tagToPiece.first { $0.value == piece }?.key
+    }
+
     init(tagToPiece: [CertaboTagID: Piece]) { self.tagToPiece = tagToPiece }
 
     // MARK: - Lookup
