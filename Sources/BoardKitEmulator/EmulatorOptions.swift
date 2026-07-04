@@ -29,7 +29,10 @@ public struct EmulatorOptions: Sendable, Equatable {
 
     public var boardKind: BoardKind
     public var pgnPath: String?
-    public var seed: UInt64 = 0xF1A7
+    /// Chaos/game RNG seed. Defaults to a fresh random value per launch so
+    /// repeated sessions play different games; pass --seed to reproduce a
+    /// session exactly (the capture header records the resolved value).
+    public var seed: UInt64 = UInt64.random(in: 1...UInt64.max)
     public var chaosProfile: ChaosProfile = .casual
     public var thinkMs: Int = 2_000
     public var humanMs: Int = 1_200
