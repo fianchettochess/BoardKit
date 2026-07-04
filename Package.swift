@@ -44,6 +44,13 @@ let package = Package(
         // so test-only app targets can depend on it. Not part of the production
         // graph.
         .library(name: "BoardKitTestSupport", targets: ["BoardKitTestSupport"]),
+        // Tier-0 board emulator: a macOS CLI that advertises over real BLE as a
+        // physical chess board (Square Off Pro / Chessnut Air) so the Fianchetto
+        // apps on a real phone can connect to it as if it were hardware. ALL
+        // CoreBluetooth code lives inside this executable target, guarded by
+        // `#if os(macOS) && canImport(CoreBluetooth)` — the library targets
+        // above stay platform-free.
+        .executable(name: "boardkit-emulator", targets: ["BoardKitEmulator"]),
     ],
     dependencies: [
         // ChessCore is its own repo, sibling of the consumer monorepos.
@@ -105,6 +112,41 @@ let package = Package(
                 .product(name: "ChessCore", package: "ChessCore"),
             ],
             path: "Tests/BoardKitTests"
+        ),
+
+        // ── Tier-0 board emulator (executable) ───────────────────────────────
+        // Peripheral-side personalities (SquareOffPersonality /
+        // ChessnutPersonality) reuse the host-side codecs from the adapter
+        // targets in the opposite direction. The BLE peripheral server and
+        // the CLI entry point are macOS-only (`#if os(macOS) &&
+        // canImport(CoreBluetooth)`); every other file in the target is
+        // platform-free and unit-tested by BoardKitEmulatorTests.
+        .executableTarget(
+            name: "BoardKitEmulator",
+            dependencies: [
+                "BoardKit",
+                "SquareOffAdapter",
+                "ChessnutAdapter",
+                "BoardKitTestSupport",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/BoardKitEmulator"
+        ),
+
+        // ── Tier-0 emulator + chaos-layer tests ──────────────────────────────
+        // Separate test target (rather than growing BoardKitTests) so the
+        // emulator stream stays merge-clean against parallel adapter work.
+        .testTarget(
+            name: "BoardKitEmulatorTests",
+            dependencies: [
+                "BoardKitEmulator",
+                "BoardKit",
+                "SquareOffAdapter",
+                "ChessnutAdapter",
+                "BoardKitTestSupport",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Tests/BoardKitEmulatorTests"
         ),
     ],
     swiftLanguageModes: [.v6]
