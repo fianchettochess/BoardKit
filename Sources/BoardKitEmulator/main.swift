@@ -35,7 +35,8 @@ func makeDriver(options: EmulatorOptions) -> GameDriver {
         chaosProfile: options.chaosProfile,
         seed: options.seed,
         thinkMs: options.thinkMs,
-        humanMs: options.humanMs
+        humanMs: options.humanMs,
+        pushStateEvery: options.pushStateEvery
     )
     return GameDriver(personality: options.makePersonality(), configuration: configuration)
 }

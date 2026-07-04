@@ -32,17 +32,28 @@ public actor GameDriver {
         /// Pause between an LED move indication arriving and the "human"
         /// starting to execute it on the board.
         public var humanMs: Int
+        /// When non-nil, emit an UNSOLICITED board-state snapshot frame after
+        /// every n-th successfully executed move.
+        ///
+        /// This is a **divergence-detection test knob**: it lets the host's
+        /// occupancy-mismatch machinery notice app/board drift without a manual
+        /// sync request. Left `nil` (OFF) by default because real boards do not
+        /// push unsolicited state — enabling it changes the protocol in a way
+        /// the host adapter does not expect from hardware.
+        public var pushStateEvery: Int?
 
         public init(scriptedUCIs: [String] = [],
                     chaosProfile: ChaosProfile = .casual,
                     seed: UInt64 = 0,
                     thinkMs: Int = 2_000,
-                    humanMs: Int = 1_200) {
+                    humanMs: Int = 1_200,
+                    pushStateEvery: Int? = nil) {
             self.scriptedUCIs = scriptedUCIs
             self.chaosProfile = chaosProfile
             self.seed = seed
             self.thinkMs = thinkMs
             self.humanMs = humanMs
+            self.pushStateEvery = pushStateEvery
         }
     }
 
@@ -60,6 +71,9 @@ public actor GameDriver {
     private var pendingHostMove: (uci: String, isMotorised: Bool)?
     private var running = false
     private var loopTask: Task<Void, Never>?
+    /// Number of moves successfully executed (host-dictated or scripted).
+    /// Drives the `pushStateEvery` unsolicited-snapshot feature.
+    private var executedMoveCount = 0
 
     private var onFrames: (@Sendable ([PersonalityFrame]) -> Void)?
     private var onLog: (@Sendable (String) -> Void)?
@@ -153,6 +167,7 @@ public actor GameDriver {
         scriptDiverged = false
         hostSides = []
         pendingHostMove = nil
+        executedMoveCount = 0
         await emitSnapshot()
     }
 
@@ -268,6 +283,12 @@ public actor GameDriver {
 
         if MoveGenerator.legalMoves(for: await board.position).isEmpty {
             log("game over: \(await board.position.fen)")
+        }
+
+        executedMoveCount += 1
+        if let n = configuration.pushStateEvery, n > 0, executedMoveCount % n == 0 {
+            log("push-state-every \(n): emitting unsolicited board-state (after move \(executedMoveCount))")
+            await emitSnapshot()
         }
     }
 

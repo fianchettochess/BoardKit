@@ -16,6 +16,9 @@ import BoardKitTestSupport
 ///     [--battery <n>]           Chessnut battery percent (default 88)
 ///     [--notify-gap-ms <n>]     pacing between BLE notification chunks (default 15)
 ///     [--dry-run [plies]]       no BLE: play up to N plies (default 12) printing frames, then exit
+///     [--push-state-every <n>]  [test knob] emit an unsolicited board-state frame after every
+///                               n-th executed move (divergence-detection aid; default OFF —
+///                               real boards do not push unsolicited state)
 /// ```
 public struct EmulatorOptions: Sendable, Equatable {
 
@@ -36,6 +39,14 @@ public struct EmulatorOptions: Sendable, Equatable {
     public var notifyGapMs: Int = 15
     public var dryRun: Bool = false
     public var dryRunPlies: Int = 12
+    /// After every n-th executed move the personality emits an UNSOLICITED board-state frame
+    /// (occupancySnapshot for SquareOff, identitySnapshot for Chessnut).
+    ///
+    /// Default is `nil` (OFF). Documented as a **divergence-detection test knob**: it lets the
+    /// host's occupancy-mismatch machinery notice app/board drift without a manual sync request.
+    /// Left off by default because real boards do not push unsolicited state — enabling it changes
+    /// the protocol in a way the host adapter does not expect from hardware.
+    public var pushStateEvery: Int? = nil
 
     public static let usage = """
     usage: boardkit-emulator <squareoff|chessnut> [options]
@@ -49,6 +60,9 @@ public struct EmulatorOptions: Sendable, Equatable {
       --battery <n>           Chessnut battery percent (default 88)
       --notify-gap-ms <n>     pacing between BLE notification chunks (default 15)
       --dry-run [plies]       no BLE: play up to N plies (default 12) printing frames, then exit
+      --push-state-every <n>  [test knob] emit an unsolicited board-state frame after every n-th
+                              executed move; lets the host's mismatch machinery catch drift without
+                              a manual sync (default OFF — real boards do not push unsolicited state)
     """
 
     /// Usage / parse failure with a message suitable for stderr.
@@ -129,6 +143,8 @@ public struct EmulatorOptions: Sendable, Equatable {
                     options.dryRunPlies = plies
                     index += 1
                 }
+            case "--push-state-every":
+                options.pushStateEvery = try intValue(flag)
             case "--help", "-h":
                 throw UsageError(usage)
             default:

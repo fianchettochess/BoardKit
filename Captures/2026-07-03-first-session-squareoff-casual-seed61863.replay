@@ -1,0 +1,252 @@
+# boardkit-emulator capture
+# board: squareoff  chaos: casual  seed: 61863
+# rx = board→host notification (replayable via ReplayTransport); tx = host→board write
+event connected
+delay 2475705
+rx 33 30 23 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 2A
+delay 283
+# tx 33 30 23 52 2A
+rx 33 30 23 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 31 31 30 30 30 30 31 31 2A
+delay 2430
+rx 30 23 62 32 75 2A
+delay 385
+rx 30 23 62 32 64 2A
+delay 928
+rx 30 23 62 32 75 2A
+delay 539
+rx 30 23 62 34 64 2A
+delay 2965
+rx 30 23 65 37 75 2A
+delay 841
+rx 30 23 65 36 64 2A
+delay 2621
+rx 30 23 62 31 75 2A
+delay 558
+rx 30 23 63 33 64 2A
+delay 2570
+rx 30 23 62 37 75 2A
+delay 356
+rx 30 23 62 36 64 2A
+delay 2526
+rx 30 23 67 32 75 2A
+delay 860
+rx 30 23 67 34 64 2A
+delay 2645
+rx 30 23 63 38 75 2A
+delay 756
+rx 30 23 61 36 64 2A
+delay 2839
+rx 30 23 61 32 75 2A
+delay 660
+rx 30 23 61 34 64 2A
+delay 3000
+rx 30 23 61 36 75 2A
+delay 457
+rx 30 23 61 36 64 2A
+delay 384
+rx 30 23 61 36 75 2A
+delay 645
+rx 30 23 63 38 64 2A
+delay 3013
+rx 30 23 63 33 75 2A
+delay 386
+rx 30 23 62 35 64 2A
+delay 2997
+rx 30 23 62 38 75 2A
+delay 891
+rx 30 23 63 36 64 2A
+delay 2659
+rx 30 23 65 32 75 2A
+delay 702
+rx 30 23 65 33 64 2A
+delay 2724
+rx 30 23 65 38 75 2A
+delay 7422
+rx 30 23 65 37 64 2A
+delay 2953
+rx 30 23 61 31 75 2A
+delay 712
+rx 30 23 62 31 64 2A
+delay 2761
+rx 30 23 62 34 75 2A
+delay 706
+rx 30 23 63 36 75 2A
+delay 689
+rx 30 23 62 34 64 2A
+delay 2745
+rx 30 23 66 31 75 2A
+delay 630
+rx 30 23 65 32 64 2A
+delay 2892
+rx 30 23 67 37 75 2A
+delay 557
+rx 30 23 67 35 64 2A
+delay 2726
+rx 30 23 63 31 75 2A
+delay 393
+rx 30 23 61 33 64 2A
+delay 2798
+rx 30 23 65 37 75 2A
+delay 5151
+rx 30 23 65 38 64 2A
+delay 2702
+rx 30 23 66 32 75 2A
+delay 612
+rx 30 23 66 33 64 2A
+delay 2503
+rx 30 23 66 37 75 2A
+delay 7965
+rx 30 23 66 36 64 2A
+delay 2855
+rx 30 23 67 31 75 2A
+delay 272
+rx 30 23 68 33 64 2A
+delay 3084
+rx 30 23 62 34 75 2A
+delay 294
+rx 30 23 63 36 64 2A
+delay 2615
+rx 30 23 62 31 75 2A
+delay 576
+rx 30 23 62 33 64 2A
+delay 2545
+# tx 33 30 23 52 2A
+rx 33 30 23 30 30 31 31 30 30 31 31 30 30 31 30 31 31 30 30 30 31 30 30 30 31 31 31 31 31 30 30 30 30 31 31 31 31 31 30 30 31 30 31 30 30 31 30 30 31 30 31 30 30 30 31 31 30 30 31 31 31 31 30 30 30 31 31 2A
+delay 215
+rx 30 23 63 36 75 2A
+delay 9621
+rx 30 23 65 37 64 2A
+delay 2910
+rx 30 23 62 33 75 2A
+delay 687
+rx 30 23 62 31 64 2A
+delay 2986
+rx 30 23 65 38 75 2A
+delay 928
+rx 30 23 66 37 64 2A
+delay 2958
+rx 30 23 61 33 75 2A
+delay 276
+rx 30 23 63 31 64 2A
+delay 2913
+rx 30 23 64 38 75 2A
+delay 664
+rx 30 23 65 38 64 2A
+delay 2763
+rx 30 23 62 31 75 2A
+delay 266
+rx 30 23 62 33 64 2A
+delay 2652
+rx 30 23 63 38 75 2A
+delay 566
+rx 30 23 61 36 64 2A
+delay 2819
+rx 30 23 62 35 75 2A
+delay 691
+rx 30 23 62 35 64 2A
+delay 561
+rx 30 23 62 35 75 2A
+delay 798
+rx 30 23 64 36 64 2A
+delay 2816
+rx 30 23 66 37 75 2A
+delay 536
+rx 30 23 67 37 64 2A
+delay 2658
+rx 30 23 65 31 75 2A
+delay 7459
+rx 30 23 66 31 64 2A
+delay 2573
+rx 30 23 65 37 75 2A
+delay 395
+rx 30 23 67 36 64 2A
+delay 2404
+rx 30 23 68 33 75 2A
+delay 598
+rx 30 23 67 35 75 2A
+delay 876
+rx 30 23 67 35 64 2A
+delay 2744
+rx 30 23 67 36 75 2A
+delay 339
+rx 30 23 67 36 64 2A
+delay 496
+rx 30 23 67 36 75 2A
+delay 12570
+rx 30 23 66 34 64 2A
+delay 2689
+rx 30 23 65 33 75 2A
+delay 936
+rx 30 23 66 34 75 2A
+delay 902
+rx 30 23 66 34 64 2A
+delay 2913
+rx 30 23 61 36 75 2A
+delay 758
+rx 30 23 63 38 64 2A
+delay 2409
+rx 30 23 62 33 75 2A
+delay 654
+rx 30 23 63 33 64 2A
+delay 2620
+rx 30 23 65 38 75 2A
+delay 569
+rx 30 23 64 38 64 2A
+delay 2630
+rx 30 23 63 33 75 2A
+delay 664
+rx 30 23 63 36 64 2A
+delay 2804
+rx 30 23 64 38 75 2A
+delay 942
+rx 30 23 65 38 64 2A
+delay 2771
+rx 30 23 66 31 75 2A
+delay 318
+rx 30 23 66 31 64 2A
+delay 619
+rx 30 23 66 31 75 2A
+delay 921
+rx 30 23 65 31 64 2A
+delay 2724
+rx 30 23 67 38 75 2A
+delay 349
+rx 30 23 67 38 64 2A
+delay 438
+rx 30 23 67 38 75 2A
+delay 353
+rx 30 23 68 36 64 2A
+delay 2403
+rx 30 23 67 35 75 2A
+delay 763
+rx 30 23 68 37 75 2A
+delay 333
+rx 30 23 68 37 64 2A
+delay 2381
+rx 30 23 68 38 75 2A
+delay 648
+rx 30 23 68 37 75 2A
+delay 680
+rx 30 23 68 37 64 2A
+delay 2536
+rx 30 23 63 31 75 2A
+delay 489
+rx 30 23 61 33 64 2A
+delay 2544
+rx 30 23 67 37 75 2A
+delay 914
+rx 30 23 68 38 64 2A
+delay 2481
+rx 30 23 63 38 75 2A
+delay 548
+rx 30 23 64 36 75 2A
+delay 572
+rx 30 23 63 38 64 2A
+delay 2977
+rx 30 23 61 37 75 2A
+delay 657
+rx 30 23 61 37 64 2A
+delay 823
+rx 30 23 61 37 75 2A
+delay 444
+rx 30 23 61 35 64 2A
