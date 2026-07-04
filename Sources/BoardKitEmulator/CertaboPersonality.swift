@@ -15,9 +15,19 @@ import CertaboAdapter
 ///   rank, MSB = a-file). The host adapter decodes as occupancy events.
 ///
 /// ## Transport identity
-/// Certabo has no published BLE GATT UUIDs. The personality uses the SPP service UUID
-/// from `CertaboBT` as the advertised service; the data pipe uses NUS-style roles.
-/// Discovery is by name prefix "Certabo" until BLE UUIDs are confirmed on hardware.
+/// Certabo has no BLE GATT profile anywhere in open source (verified 2026-07):
+/// the official app ([OFFICIAL], [BT]) is serial-only — `41c9ee4d-…-24710a` is a
+/// classic-BT SPP SDP record (PyBluez `SERIAL_PORT_CLASS`), not a GATT service —
+/// and Chesstimation, the only open firmware speaking Certabo wirelessly, does so
+/// over classic BT serial only (its BLE modes are ChessLink/ISSC-UART and
+/// Pegasus/NUS). Real-world Certabo BLE is either the closed Tabutronic ESP32-S3
+/// module (ChessConnect-only, UUIDs unpublished; ChessConnect is also closed) or
+/// [CER2NUT], which impersonates a Chessnut Air — those boards land on
+/// `ChessnutAdapter` with no Certabo code involved. So this personality uses the
+/// real SPP UUID as the advertised service with derived char UUIDs (…00/…01 in
+/// place of the …0a base) and NUS-style roles; discovery is by name prefix
+/// "Certabo". If the Tabutronic module is ever sniffed, expect NUS or ISSC
+/// transparent UART (49535343-FE7D-…) — the two de-facto chess-board BLE bridges.
 ///
 /// ## Host→board commands handled
 /// - 8-byte classic LED frame  → `.setLEDs` (decode LSB-a-file rank bytes)

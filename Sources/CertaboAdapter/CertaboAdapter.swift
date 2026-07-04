@@ -309,7 +309,12 @@ public struct CertaboCalibration: Sendable {
 /// transport-agnostic:
 /// - **USB serial**: Silicon Labs CP210x, 38400 baud 8N1, DTR+RTS asserted.
 /// - **BT Classic**: Raspberry Pi RFCOMM bridge on channel 10. Byte-identical.
-/// - **BLE**: ESP32-S3 module (2023+). GATT UUIDs unpublished (see Spec Risks).
+/// - **BLE**: ESP32-S3 module (2023+, Tabutronic-built). Closed firmware targeting
+///   the (also closed) ChessConnect extension; GATT UUIDs unpublished and absent
+///   from all open source — [OFFICIAL]/[BT] are serial-only, and Chesstimation's
+///   Certabo mode is classic-BT serial (its BLE is ChessLink/Pegasus only). The
+///   practical community BLE path is [CER2NUT], which presents the board as a
+///   Chessnut Air — handled by ChessnutAdapter, not this one.
 ///
 /// ## Square indexing
 ///
