@@ -58,6 +58,10 @@ public struct EmulatorOptions: Sendable, Equatable {
     /// Left off by default because real boards do not push unsolicited state — enabling it changes
     /// the protocol in a way the host adapter does not expect from hardware.
     public var pushStateEvery: Int? = nil
+    /// Manual mode: the driver never auto-plays — it only executes moves given via
+    /// stdin (`play <uci>` / `takeback`) or host-dictated engine moves. Used to
+    /// drive precise validation scenarios (e.g. take-back + library save).
+    public var manual: Bool = false
 
     public static let usage = """
     usage: boardkit-emulator <squareoff|chessnut|pegasus|millennium|certabo|chessup> [options]
@@ -156,6 +160,8 @@ public struct EmulatorOptions: Sendable, Equatable {
                 }
             case "--push-state-every":
                 options.pushStateEvery = try intValue(flag)
+            case "--manual":
+                options.manual = true
             case "--help", "-h":
                 throw UsageError(usage)
             default:

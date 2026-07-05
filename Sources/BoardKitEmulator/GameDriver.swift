@@ -42,18 +42,25 @@ public actor GameDriver {
         /// the host adapter does not expect from hardware.
         public var pushStateEvery: Int?
 
+        /// When true the driver never auto-plays: it only executes moves it is
+        /// explicitly told to (host-dictated engine moves, or `play`/`takeback`
+        /// stdin commands). Used to drive precise validation scenarios.
+        public var manual: Bool
+
         public init(scriptedUCIs: [String] = [],
                     chaosProfile: ChaosProfile = .casual,
                     seed: UInt64 = 0,
                     thinkMs: Int = 2_000,
                     humanMs: Int = 1_200,
-                    pushStateEvery: Int? = nil) {
+                    pushStateEvery: Int? = nil,
+                    manual: Bool = false) {
             self.scriptedUCIs = scriptedUCIs
             self.chaosProfile = chaosProfile
             self.seed = seed
             self.thinkMs = thinkMs
             self.humanMs = humanMs
             self.pushStateEvery = pushStateEvery
+            self.manual = manual
         }
     }
 
@@ -74,6 +81,10 @@ public actor GameDriver {
     /// Number of moves successfully executed (host-dictated or scripted).
     /// Drives the `pushStateEvery` unsolicited-snapshot feature.
     private var executedMoveCount = 0
+
+    /// Per-move undo stack: the position BEFORE each executed move and the clean
+    /// physical events it produced. Drives `takeBackLastMove`.
+    private var moveHistory: [(positionBefore: Position, cleanEvents: [BoardEvent])] = []
 
     private var onFrames: (@Sendable ([PersonalityFrame]) -> Void)?
     private var onLog: (@Sendable (String) -> Void)?
@@ -127,6 +138,45 @@ public actor GameDriver {
         await process(actions)
     }
 
+    // MARK: - Manual control (validation hooks, driven from stdin)
+
+    /// Play a specific board-originated move immediately (the emulator acting as
+    /// the physical player making this move). Ignores the think-timer / script.
+    public func playMoveNow(uci: String) async {
+        await execute(uci: uci, dictatedByHost: false, paced: true)
+    }
+
+    /// Emit a full board-state snapshot on demand.
+    public func snapshotNow() async {
+        await emitSnapshot()
+    }
+
+    /// Take back the last executed move: reset the simulated board to the position
+    /// before it and emit the REVERSE physical events — the forward events reversed
+    /// with lift/place flipped, which is the correct retraction for simple moves,
+    /// captures, castling, en passant, and promotion. Models a player physically
+    /// picking their move back up (the club-play blunder undo).
+    public func takeBackLastMove() async {
+        guard let last = moveHistory.popLast() else {
+            log("take-back: no move to undo")
+            return
+        }
+        await board.reset(to: last.positionBefore)
+        executedMoveCount = max(0, executedMoveCount - 1)
+        log("take-back → \(last.positionBefore.fen)")
+        let reverse: [BoardEvent] = last.cleanEvents.reversed().map { event in
+            if case let .squareSensed(square, isLift, piece) = event {
+                return .squareSensed(square: square, isLift: !isLift, piece: piece)
+            }
+            return event
+        }
+        for event in reverse {
+            let frames = personality.frames(for: event)
+            if !frames.isEmpty { onFrames?(frames) }
+            try? await Task.sleep(for: .milliseconds(max(1, configuration.humanMs / 2)))
+        }
+    }
+
     private func process(_ actions: [PeripheralAction]) async {
         for action in actions {
             switch action {
@@ -166,6 +216,7 @@ public actor GameDriver {
         remainingScript = configuration.scriptedUCIs
         scriptDiverged = false
         hostSides = []
+        moveHistory.removeAll()
         pendingHostMove = nil
         executedMoveCount = 0
         await emitSnapshot()
@@ -190,6 +241,9 @@ public actor GameDriver {
                 thinkAccumulatedMs = 0
                 continue
             }
+
+            // Manual mode: never auto-play — only host-dictated / stdin-driven moves.
+            guard !configuration.manual else { continue }
 
             thinkAccumulatedMs += tickMs
             guard thinkAccumulatedMs >= configuration.thinkMs else { continue }
@@ -265,6 +319,7 @@ public actor GameDriver {
             log("SimulatedBoard rejected \(uci)")
             return
         }
+        moveHistory.append((positionBefore: position, cleanEvents: cleanEvents))
 
         let context = ChaosMoveContext(move: move, positionBefore: position, cleanEvents: cleanEvents)
         let perturbation = chaos.perturb(context, rng: &rng)

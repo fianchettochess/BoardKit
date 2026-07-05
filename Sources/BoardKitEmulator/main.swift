@@ -14,6 +14,10 @@ import Foundation
 import ChessCore
 import BoardKitTestSupport
 
+// Unbuffered stdout so logs are readable in real time when the emulator runs as a
+// background process piped to a file (validation sessions).
+setvbuf(stdout, nil, _IONBF, 0)
+
 // MARK: - Shared setup
 
 func loadScriptedUCIs(pgnPath: String?) -> [String] {
@@ -36,7 +40,8 @@ func makeDriver(options: EmulatorOptions) -> GameDriver {
         seed: options.seed,
         thinkMs: options.thinkMs,
         humanMs: options.humanMs,
-        pushStateEvery: options.pushStateEvery
+        pushStateEvery: options.pushStateEvery,
+        manual: options.manual
     )
     return GameDriver(personality: options.makePersonality(), configuration: configuration)
 }
@@ -127,6 +132,32 @@ if let captureURL {
     log("capturing traffic to \(captureURL.path)")
 }
 server.start()
+
+// Interactive stdin control (validation driver). Runs on its own thread because
+// readLine() blocks; commands are dispatched onto the driver actor. Feed it via
+// a FIFO to control the emulator while a real phone is connected.
+if options.manual {
+    log("manual mode — stdin commands: play <uci> | takeback | snapshot | quit")
+}
+Thread.detachNewThread {
+    while let line = readLine(strippingNewline: true) {
+        let cmd = line.trimmingCharacters(in: .whitespaces)
+        let lower = cmd.lowercased()
+        if lower.isEmpty { continue }
+        if lower == "takeback" || lower == "undo" || lower == "t" {
+            Task { await driver.takeBackLastMove() }
+        } else if lower == "snapshot" || lower == "s" {
+            Task { await driver.snapshotNow() }
+        } else if lower == "quit" || lower == "q" {
+            log("quit"); exit(0)
+        } else if lower.hasPrefix("play ") {
+            let uci = String(cmd.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            Task { await driver.playMoveNow(uci: uci) }
+        } else {
+            log("commands: play <uci> | takeback | snapshot | quit")
+        }
+    }
+}
 dispatchMain()
 
 #else
