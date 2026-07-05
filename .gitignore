@@ -6,3 +6,8 @@ DerivedData/
 .swiftpm/
 .netrc
 Package.resolved
+
+# Guard: a stray self-referential repo-root symlink (BoardKit -> this dir) has
+# appeared before; ignore it so an accidental `git add -A` can't bake the local
+# home path into history.
+/BoardKit
