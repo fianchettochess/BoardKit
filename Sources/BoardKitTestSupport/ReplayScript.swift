@@ -53,7 +53,7 @@ public struct ReplayScript {
         /// Lifecycle event decoded from an `event` line.
         case lifecycle(BoardEvent)
         /// Delay decoded from a `delay` line (not enforced in `runSync()`).
-        case delay(Duration)
+        case delay(TimeInterval)
     }
 
     // MARK: - Parse errors
@@ -108,7 +108,7 @@ public struct ReplayScript {
                         lineNumber: lineNumber, text: line,
                         reason: "`delay` requires a single integer millisecond value")
                 }
-                steps.append(.delay(.milliseconds(ms)))
+                steps.append(.delay(Double(ms) / 1000.0))
 
             case "event":
                 guard parts.count == 2 else {

@@ -90,14 +90,14 @@ public protocol BoardAdapter: Sendable {
     ///   unexpected drop; `false` on the initial fresh connection.
     ///
     /// ## Chessnut Air mapping
-    /// - First connect: `[(.startSession, delayBefore: .zero)]`
-    /// - Reconnect: `[(.startSession, delayBefore: .milliseconds(250))]`
+    /// - First connect: `[(.startSession, delayBefore: 0)]`
+    /// - Reconnect: `[(.startSession, delayBefore: 0.25)]`
     ///
     /// ## Square Off mapping (Pass 2 reference)
     /// - First connect:
-    ///   `[(.startSession, .milliseconds(250)), (.requestState, .milliseconds(150))]`
-    ///   (250ms = hardware-proven link-settle; matches the shipped adapter)
+    ///   `[(.startSession, 0.25), (.requestState, 0.15)]`
+    ///   (0.25 s = hardware-proven link-settle; matches the shipped adapter)
     /// - Reconnect:
-    ///   `[(.requestState, .milliseconds(250))]`
-    func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)]
+    ///   `[(.requestState, 0.25)]`
+    func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)]
 }

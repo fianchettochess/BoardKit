@@ -356,14 +356,14 @@ public struct ChessUpAdapter: BoardAdapter {
         }
     }
 
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Allow 250 ms for the BLE link to stabilise, then reprobe state.
             // Pattern mirrors ChessnutAdapter's reconnect delay.
-            return [(.startSession, .milliseconds(250))]
+            return [(.startSession, 0.25)] // 250ms
         }
         // First connect: probe immediately (no required delay before GET_STATE).
-        return [(.startSession, .zero)]
+        return [(.startSession, 0)]
     }
 
     /// Reset the framing buffer and per-session state.

@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 import BoardKit
 
 /// Tests for `BoardReconnectPolicy` — the pure-value reconnect schedule
@@ -23,23 +24,23 @@ struct BoardReconnectPolicyTests {
     // MARK: - Back-off schedule (default policy)
 
     @Test func testAttempt1Delay() {
-        #expect(policy.nextDelay(attempt: 1) == .seconds(2))
+        #expect(policy.nextDelay(attempt: 1) == 2)
     }
 
     @Test func testAttempt2Delay() {
-        #expect(policy.nextDelay(attempt: 2) == .seconds(4))
+        #expect(policy.nextDelay(attempt: 2) == 4)
     }
 
     @Test func testAttempt3Delay() {
-        #expect(policy.nextDelay(attempt: 3) == .seconds(8))
+        #expect(policy.nextDelay(attempt: 3) == 8)
     }
 
     @Test func testAttempt4Delay() {
-        #expect(policy.nextDelay(attempt: 4) == .seconds(8))
+        #expect(policy.nextDelay(attempt: 4) == 8)
     }
 
     @Test func testAttempt5Delay() {
-        #expect(policy.nextDelay(attempt: 5) == .seconds(8))
+        #expect(policy.nextDelay(attempt: 5) == 8)
     }
 
     // MARK: - Out-of-range attempts return nil (give up)
@@ -60,16 +61,16 @@ struct BoardReconnectPolicyTests {
 
     @Test func testCustomPolicy3AttemptSchedule() {
         let custom = BoardReconnectPolicy(maxAttempts: 3)
-        #expect(custom.nextDelay(attempt: 1) == .seconds(2))
-        #expect(custom.nextDelay(attempt: 2) == .seconds(4))
-        #expect(custom.nextDelay(attempt: 3) == .seconds(8))
+        #expect(custom.nextDelay(attempt: 1) == 2)
+        #expect(custom.nextDelay(attempt: 2) == 4)
+        #expect(custom.nextDelay(attempt: 3) == 8)
         #expect(custom.nextDelay(attempt: 4) == nil, "Fourth attempt exceeds custom maxAttempts of 3")
     }
 
     // MARK: - Full schedule is monotonically non-decreasing
 
     @Test func testScheduleIsMonotonicallyNonDecreasing() {
-        var previous: Duration = .seconds(0)
+        var previous: TimeInterval = 0
         for attempt in 1...policy.maxAttempts {
             guard let delay = policy.nextDelay(attempt: attempt) else {
                 Issue.record("Unexpected nil for attempt \(attempt)")

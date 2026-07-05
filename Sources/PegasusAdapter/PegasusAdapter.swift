@@ -394,22 +394,22 @@ public struct PegasusAdapter: BoardAdapter {
     ///
     /// **Transport note:** subscribe to `PegasusGATT.notifyChar` CCCD
     /// notifications BEFORE issuing any command. [DD `setNotifyValue(true)`]
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Occupancy boards resync by snapshot — re-request the board dump
             // after allowing 250 ms for the link to restabilise.
-            return [(.requestState, .milliseconds(250))]
+            return [(.requestState, 0.25)] // 250ms
         }
         return [
-            (.custom(Data([Cmd.reset])),         .milliseconds(300)), // initial delay then reset
-            (.custom(Data([Cmd.serialNr])),      .milliseconds(50)),  // serial number
-            (.custom(Data([Cmd.version])),       .milliseconds(50)),  // version → confirm Pegasus
-            (.custom(devkeyFrame()),             .milliseconds(50)),  // devkey (fire-and-forget)
-            (.custom(Data([Cmd.trademark])),     .milliseconds(50)),  // trademark/device-info
-            (.custom(Data([Cmd.reset])),         .milliseconds(50)),  // reset again
-            (.requestState,                      .milliseconds(50)),  // board dump (0x42)
-            (.startSession,                      .milliseconds(50)),  // streaming mode (0x44)
-            (.custom(Data([Cmd.batteryStatus])), .milliseconds(50)),  // battery + enable push
+            (.custom(Data([Cmd.reset])),         0.3),  // 300ms — initial delay then reset
+            (.custom(Data([Cmd.serialNr])),      0.05), // 50ms — serial number
+            (.custom(Data([Cmd.version])),       0.05), // 50ms — version → confirm Pegasus
+            (.custom(devkeyFrame()),             0.05), // 50ms — devkey (fire-and-forget)
+            (.custom(Data([Cmd.trademark])),     0.05), // 50ms — trademark/device-info
+            (.custom(Data([Cmd.reset])),         0.05), // 50ms — reset again
+            (.requestState,                      0.05), // 50ms — board dump (0x42)
+            (.startSession,                      0.05), // 50ms — streaming mode (0x44)
+            (.custom(Data([Cmd.batteryStatus])), 0.05), // 50ms — battery + enable push
         ]
     }
 

@@ -23,11 +23,16 @@ import PackageDescription
 let package = Package(
     name: "BoardKit",
     platforms: [
-        .macOS(.v13),
-        .iOS(.v16),
-        .tvOS(.v16),
-        .watchOS(.v9),
-        .visionOS(.v1),
+        // Lowest floor with no device-compatibility loss. The .4 point release is
+        // the minimum for the throwing FileHandle APIs (write(contentsOf:)) used by
+        // the emulator; the Swift-concurrency seam (AsyncStream/actor) already needs
+        // 13.0/10.15, so this is a free point-bump. Every 13.0–13.3 device updated
+        // to 13.4, so reach is identical.
+        .macOS("10.15.4"),
+        .iOS("13.4"),
+        .tvOS("13.4"),
+        .watchOS("6.2"),
+        .visionOS("1.0"),
     ],
     products: [
         // Core seam + board-agnostic kernels.

@@ -173,7 +173,7 @@ public actor GameDriver {
         for event in reverse {
             let frames = personality.frames(for: event)
             if !frames.isEmpty { onFrames?(frames) }
-            try? await Task.sleep(for: .milliseconds(max(1, configuration.humanMs / 2)))
+            try? await Task.sleep(nanoseconds: UInt64(max(1, configuration.humanMs / 2)) * 1_000_000)
         }
     }
 
@@ -228,14 +228,14 @@ public actor GameDriver {
         let tickMs = 100
         var thinkAccumulatedMs = 0
         while running, !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(tickMs))
+            try? await Task.sleep(nanoseconds: UInt64(tickMs) * 1_000_000)
 
             if let pending = pendingHostMove {
                 pendingHostMove = nil
                 if !pending.isMotorised {
                     // The human walks over and physically executes the
                     // indicated move.
-                    try? await Task.sleep(for: .milliseconds(configuration.humanMs))
+                    try? await Task.sleep(nanoseconds: UInt64(configuration.humanMs) * 1_000_000)
                 }
                 await execute(uci: pending.uci, dictatedByHost: true)
                 thinkAccumulatedMs = 0
@@ -328,7 +328,7 @@ public actor GameDriver {
 
         for event in perturbation.events {
             if paced, event.delayBeforeMs > 0 {
-                try? await Task.sleep(for: event.delayBefore)
+                try? await Task.sleep(nanoseconds: UInt64(event.delayBefore * 1_000_000_000))
             }
             let frames = personality.frames(
                 for: .squareSensed(square: event.square, isLift: event.isLift, piece: event.piece)

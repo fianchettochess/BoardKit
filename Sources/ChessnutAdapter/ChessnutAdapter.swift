@@ -209,7 +209,7 @@ public struct ChessnutAdapter: BoardAdapter {
         }
     }
 
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Reconnect: allow 250 ms for the link to stabilise before re-entering
             // realtime mode. [C-REF] re-sends switchMode(0x00) on auto-reconnect;
@@ -223,11 +223,11 @@ public struct ChessnutAdapter: BoardAdapter {
             // BLE's 23-byte default ATT MTU. Without `resetFraming()`, a
             // half-frame remnant in `buffer` will desynchronise the parser on
             // the first post-reconnect notification.
-            return [(.startSession, .milliseconds(250))]
+            return [(.startSession, 0.25)] // 250ms
         }
         // First connect: send realtime-mode command immediately.
         // [OFFICIAL-DOC] Step 4; [SWIFT-REF] enableRealtimeMode; [C-REF] switchMode(0x00).
-        return [(.startSession, .zero)]
+        return [(.startSession, 0)]
     }
 
     /// Reset the framing buffer and board-state history.

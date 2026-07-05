@@ -41,12 +41,12 @@ public struct BoardReconnectPolicy: Sendable {
     /// | 1       | 2 s   |
     /// | 2       | 4 s   |
     /// | 3–5     | 8 s   |
-    public func nextDelay(attempt: Int) -> Duration? {
+    public func nextDelay(attempt: Int) -> TimeInterval? {
         guard attempt >= 1, attempt <= maxAttempts else { return nil }
         switch attempt {
-        case 1:  return .seconds(2)
-        case 2:  return .seconds(4)
-        default: return .seconds(8)
+        case 1:  return 2
+        case 2:  return 4
+        default: return 8
         }
     }
 }

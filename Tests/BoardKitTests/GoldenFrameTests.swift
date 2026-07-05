@@ -225,7 +225,7 @@ private func piece(at algebraic: String, in identity: [Piece?]) -> Piece? {
     #expect(reconnect.count == 1)
     let data = adapter.encode(reconnect[0].command)
     #expect(data == Data([0x21, 0x01, 0x00]))
-    #expect(reconnect[0].delayBefore == .milliseconds(250))
+    #expect(reconnect[0].delayBefore == 0.25)
 }
 
 // MARK: - G6: Battery request/response

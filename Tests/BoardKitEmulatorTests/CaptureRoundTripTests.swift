@@ -36,7 +36,7 @@ import BoardKitEmulator
     guard case .delay(let pause) = steps[2] else {
         Issue.record("step 2: expected delay, got \(steps[2])"); return
     }
-    #expect(pause == .milliseconds(350))
+    #expect(pause == 0.35)
     guard case .bytes(let second) = steps[3] else {
         Issue.record("step 3: expected bytes, got \(steps[3])"); return
     }

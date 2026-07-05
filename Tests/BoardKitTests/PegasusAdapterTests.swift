@@ -538,7 +538,7 @@ private func encodePegasusDump(position: Position) -> Data {
         Issue.record("Handshake must have at least one step")
         return
     }
-    #expect(firstStep.delayBefore == .milliseconds(300),
+    #expect(firstStep.delayBefore == 0.3,
             "First step must have 300 ms initial delay")
     if case .custom(let data) = firstStep.command {
         #expect(data == Data([0x40]), "First step must be reset (0x40)")
@@ -578,7 +578,7 @@ private func encodePegasusDump(position: Position) -> Data {
     } else {
         Issue.record("Reconnect step must be .requestState (board dump 0x42)")
     }
-    #expect(steps[0].delayBefore == .milliseconds(250),
+    #expect(steps[0].delayBefore == 0.25,
             "Reconnect step must have 250 ms stabilisation delay")
 }
 

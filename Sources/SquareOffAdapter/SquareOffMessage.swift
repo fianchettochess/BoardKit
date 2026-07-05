@@ -3,7 +3,7 @@ import ChessCore
 #if canImport(os)
 import os
 
-private let framerLogger = Logger(subsystem: "BoardKit", category: "SquareOff.Framer")
+private let framerLog = OSLog(subsystem: "BoardKit", category: "SquareOff.Framer")
 #endif
 
 // Square Off wire-protocol codec — SquareOffAdapter kernel.
@@ -104,7 +104,7 @@ public struct SquareOffFramer: Sendable {
         if buffer.count > Self.maxBufferSize {
             let droppedCount = buffer.count
             #if canImport(os)
-            framerLogger.error("Frame buffer exceeded \(Self.maxBufferSize) bytes with no terminator — dropping \(droppedCount) buffered bytes")
+            os_log("Frame buffer exceeded %d bytes with no terminator — dropping %d buffered bytes", log: framerLog, type: .error, Self.maxBufferSize, droppedCount)
             #else
             print("[SquareOff.Framer] Frame buffer exceeded \(Self.maxBufferSize) bytes with no terminator — dropping \(buffer.count) buffered bytes")
             #endif

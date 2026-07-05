@@ -540,7 +540,7 @@ private let f4LEDBytes = Data([
     #expect(cmds.count == 1)
     let data = adapter.encode(cmds[0].command)
     #expect(data == Data([0x21, 0x01, 0x00]))
-    #expect(cmds[0].delayBefore == .milliseconds(250))
+    #expect(cmds[0].delayBefore == 0.25)
 }
 
 // MARK: - executeMove through encode (F2 round-trip via adapter)

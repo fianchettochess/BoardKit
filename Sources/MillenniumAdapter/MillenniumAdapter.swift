@@ -350,18 +350,18 @@ public struct MillenniumAdapter: BoardAdapter {
 
     // MARK: - handshakeCommands(isReconnect:)
 
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Settle ≥100 ms (BLE minimum spacing empirical [MCHESS]), then V+S.
             return [
-                (.startSession, .milliseconds(100)),
-                (.requestState, .milliseconds(150)),
+                (.startSession, 0.1),  // 100ms
+                (.requestState, 0.15), // 150ms
             ]
         }
         // First connect: V immediately, S after 150 ms for firmware settling.
         return [
-            (.startSession, .zero),
-            (.requestState, .milliseconds(150)),
+            (.startSession, 0),
+            (.requestState, 0.15), // 150ms
         ]
     }
 

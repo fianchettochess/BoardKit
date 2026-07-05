@@ -70,7 +70,7 @@ private let g2Bytes = Data([
 @Test func runByStepPreservesGranularity() {
     let script: [ReplayTransport<ChessnutAdapter>.Step] = [
         .bytes(g1Bytes),
-        .delay(.seconds(1)),
+        .delay(1),
         .bytes(g2Bytes),
     ]
     let replay = ReplayTransport(adapter: ChessnutAdapter(), script: script)
@@ -90,8 +90,8 @@ private let g2Bytes = Data([
 @Test func delayStepsAreNotExecuted() {
     var delayCount = 0
     let script: [ReplayTransport<ChessnutAdapter>.Step] = [
-        .delay(.seconds(5)),
-        .delay(.seconds(10)),
+        .delay(5),
+        .delay(10),
     ]
     // If delays were executed we'd block for 15 s; they must be skipped.
     let replay = ReplayTransport(adapter: ChessnutAdapter(), script: script)
@@ -150,7 +150,7 @@ private let g2Bytes = Data([
 @Test func scriptIsRecorded() {
     let script: [ReplayTransport<ChessnutAdapter>.Step] = [
         .bytes(g1Bytes),
-        .delay(.milliseconds(200)),
+        .delay(0.2),
         .lifecycle(.connected),
     ]
     let replay = ReplayTransport(adapter: ChessnutAdapter(), script: script)
@@ -195,7 +195,7 @@ private let g2Bytes = Data([
         Issue.record("Expected .delay step")
         return
     }
-    #expect(d == .milliseconds(200))
+    #expect(d == 0.2)
 }
 
 @Test func replayScriptParsesEventConnected() throws {
@@ -240,7 +240,7 @@ private let g2Bytes = Data([
         Issue.record("Expected .bytes as first non-comment step")
     }
     if case .delay(let dur) = steps[1] {
-        #expect(dur == .milliseconds(50))
+        #expect(dur == 0.05)
     } else {
         Issue.record("Expected .delay as second non-comment step")
     }

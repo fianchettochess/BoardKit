@@ -44,7 +44,7 @@ public final class ReplayTransport<A: BoardAdapter>: @unchecked Sendable {
         /// `.disconnected`, etc.).
         case lifecycle(BoardEvent)
         /// Record a delay. Not enforced during `runSync()`.
-        case delay(Duration)
+        case delay(TimeInterval)
     }
 
     private var adapter: A

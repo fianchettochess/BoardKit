@@ -588,7 +588,7 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
     let cmds = adapter.handshakeCommands(isReconnect: true)
     #expect(cmds.count == 1)
     #expect(adapter.encode(cmds[0].command) == Data([0x67]))
-    #expect(cmds[0].delayBefore == .milliseconds(250))
+    #expect(cmds[0].delayBefore == 0.25)
 }
 
 // MARK: - GATT / capabilities

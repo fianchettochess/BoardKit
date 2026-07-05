@@ -245,11 +245,11 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// [MOVE-API] does NOT document a confirmation echo or heartbeat on 8273
     /// (unlike classic boards which emit `21 01 00` + `23 01 00`).  Do NOT
     /// gate the handshake on receiving any response. [RISK §i]
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
-            return [(.startSession, .milliseconds(250))]
+            return [(.startSession, 0.25)] // 250ms
         }
-        return [(.startSession, .zero)]
+        return [(.startSession, 0)]
     }
 
     // MARK: - resetFraming

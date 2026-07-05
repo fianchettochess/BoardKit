@@ -526,7 +526,7 @@ public struct CertaboAdapter: BoardAdapter {
     /// Empty — the Certabo board streams unsolicited immediately when the serial
     /// port is opened (DTR/RTS asserted by the transport). No host command is
     /// required. Source: [MONO424] README; [OFFICIAL] usbtool.py.
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         []
     }
 

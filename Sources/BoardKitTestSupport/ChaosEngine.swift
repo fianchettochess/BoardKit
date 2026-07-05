@@ -63,7 +63,7 @@ public struct ChaosMoveEvent: Equatable, Sendable {
         self.delayBeforeMs = delayBeforeMs
     }
 
-    public var delayBefore: Duration { .milliseconds(delayBeforeMs) }
+    public var delayBefore: TimeInterval { Double(delayBeforeMs) / 1000.0 }
 }
 
 // MARK: - Pattern identifiers

@@ -107,13 +107,13 @@ public struct SquareOffAdapter: BoardAdapter {
         }
     }
 
-    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: Duration)] {
+    public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Mid-game reconnect: request the current board state ONLY so the session
             // can reconcile the occupancy snapshot. Do NOT send startSession (startNewGame)
             // — the board would reset its game state, disrupting the in-progress game.
             // Hardware-verified safe reconnect rule, shipped 2026-07-03.
-            return [(.requestState, .milliseconds(250))]
+            return [(.requestState, 0.25)] // 250ms
         } else {
             // Fresh connection: 250ms link-settle before startSession (mirrors the
             // hardware-verified sequence: iOS SquareOffTransport.swift asyncAfter(0.25)
@@ -122,8 +122,8 @@ public struct SquareOffAdapter: BoardAdapter {
             // has time to process the new-game command (iOS/Android sendInitHandshake inner
             // asyncAfter(0.15) pattern).  Pass 2 reference: HEAD iOS:498/519, Android:373/395.
             return [
-                (.startSession, .milliseconds(250)),
-                (.requestState, .milliseconds(150)),
+                (.startSession, 0.25), // 250ms
+                (.requestState, 0.15), // 150ms
             ]
         }
     }
