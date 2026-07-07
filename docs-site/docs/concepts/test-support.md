@@ -25,7 +25,7 @@ let replay = ReplayTransport(adapter: adapter, script: [
     .bytes(Data([0x01, 0x22, /* ... Chessnut initial-position frame */])),
 ])
 let events = replay.runSync()
-// events: [.connected, .identitySnapshot([Piece?])]
+// events: [.connected, .identitySnapshot([Piece?]), .ready]
 ```
 
 ### Script steps
@@ -45,6 +45,17 @@ Delay steps are skipped. Use for golden-fixture assertions.
 
 **`runByStep()`** — returns `[[BoardEvent]]`, one inner array per step. Use
 when a test needs to assert the event set *between* step N and step N+1.
+
+To assert delay values without blocking, inspect `replay.recordedSteps` — it
+exposes the full script (including `.delay` steps) exactly as provided at init:
+
+```swift
+// Assert that a delay step was recorded between frames:
+let steps = replay.recordedSteps
+if case .delay(let t) = steps[1] {
+    XCTAssertGreaterThan(t, 0.1)
+}
+```
 
 ```swift
 let perStep = replay.runByStep()
@@ -123,8 +134,8 @@ let sim = SimulatedBoard(
 
 // Apply a move and get the physical lift/place events.
 let events = try await sim.executeMove(uci: "e2e4")
-// [squareSensed("e2", isLift: true, piece: Piece(.pawn, .white)),
-//  squareSensed("e4", isLift: false, piece: Piece(.pawn, .white))]
+// [squareSensed("e2", isLift: true, piece: Piece(type: .pawn, color: .white)),
+//  squareSensed("e4", isLift: false, piece: Piece(type: .pawn, color: .white))]
 
 // Emit a full snapshot.
 let snapshot = await sim.boardSnapshot()
@@ -171,9 +182,106 @@ Build and run:
 
 ```bash
 swift build -c release --product boardkit-emulator
-.build/release/boardkit-emulator --personality chessnut --moves e2e4 e7e5
+
+# Select the board kind as the first positional argument:
+.build/release/boardkit-emulator chessnut
+
+# Play a specific PGN file (main line only):
+.build/release/boardkit-emulator chessnut --pgn game.pgn
+
+# Dry-run (no BLE, print frames and exit after N plies):
+.build/release/boardkit-emulator chessnut --dry-run 8
+
+# Other personality tokens: squareoff | pegasus | millennium | certabo | chessup
+.build/release/boardkit-emulator millennium --chaos clumsy --seed 42
 ```
+
+The board kind is selected via a **positional token** (`squareoff`, `chessnut`,
+`pegasus`, `millennium`, `certabo`, or `chessup`) — there is no `--personality`
+flag. Game input comes from `--pgn <file>` or a seeded random game; there is
+no `--moves` flag. Run `boardkit-emulator --help` to see the full option list.
 
 The emulator personalities reuse the same host-side codec structs from the
 adapter targets in the **opposite direction** — encoding the board's outbound
 frames using the same tables the adapter uses to decode them.
+
+---
+
+## Chaos / fallible-human simulation
+
+`ChaosEngine` (in `BoardKitTestSupport`) transforms the clean sensor event
+sequence for one chess move into a perturbed stream that models how a real
+human actually handles pieces on a sensor board: j'adoube adjusts, captures
+executed in either order, lift-and-put-back second thoughts, slow two-phase
+castles, pieces slid across intermediate squares, sensor chatter, knocked
+neighbours, promotion piece-swaps, and mid-move stalls.
+
+The same engine is shared between the `boardkit-emulator` tool and consumer
+unit tests, so CI and the live radio path exercise identical perturbation logic.
+
+### Determinism contract
+
+`ChaosEngine.perturb` is a pure function of `(context, profile, rng state)`.
+No `Date`, no uncontrolled randomness. Pass the same `SeededRNG` seed and you
+get byte-identical perturbation streams on every run.
+
+### ChaosProfile presets
+
+| Profile | Characteristics |
+|---|---|
+| `.clean` | No perturbation; steady human pacing |
+| `.casual` | Occasional j'adoube, captures sometimes captured-piece-first, human-speed castles |
+| `.clumsy` | Same tolerated patterns as `.casual` at much higher rates |
+| `.hostile` | Everything in `.clumsy` plus dragged-piece blips and knocked neighbours (adversarial) |
+
+Profiles `.clean`, `.casual`, and `.clumsy` draw only **tolerated** patterns:
+the `OccupancyMoveInference` and `BoardExecutionGate` kernels must resolve and
+execute 100% of streams from these profiles. `.hostile` adds adversarial
+patterns that may legitimately deviate the gate — the survival corpus asserts
+the outcome distribution rather than perfection.
+
+### Usage
+
+```swift
+import BoardKitTestSupport
+
+// Build a context from the clean SimulatedBoard events for one move.
+let sim = SimulatedBoard(
+    position: .initial(),
+    capabilities: [.occupancySensing, .pieceIdentity]
+)
+let cleanEvents = try await sim.executeMove(uci: "e2e4")
+let move = /* ChessCore.Move for e2e4 */
+let context = ChaosMoveContext(
+    move: move,
+    positionBefore: .initial(),
+    cleanEvents: cleanEvents
+)
+
+// Perturb with a seeded RNG for reproducibility.
+var rng = SeededRNG(seed: 0xDEAD_BEEF)
+let engine = ChaosEngine(profile: .casual)
+let result = engine.perturb(context, rng: &rng)
+
+// result.events: [ChaosMoveEvent] — feed into your inference under test.
+// result.appliedPatterns: [ChaosPatternID] — log which transforms fired.
+for event in result.events {
+    let feedback = inference.handle(square: event.square, isLift: event.isLift)
+    // … assert feedback
+}
+```
+
+### ChaosPatternID
+
+Every transform the engine can apply is identified by a `ChaosPatternID` case
+(e.g. `.adjustInPlace`, `.captureOrderSwap`, `.knockedNeighbor`). The
+`appliedPatterns` array in `ChaosPerturbation` lists exactly which patterns
+fired for a given call, letting tests classify and assert outcome distributions
+per pattern type.
+
+### SeededRNG
+
+`SeededRNG` is a simple xorshift64 generator exposed publicly so consumer tests
+can produce reproducible perturbation streams independently of the engine. Pass
+an explicit seed to `SeededRNG(seed:)` and the perturbation output is
+byte-identical across platforms and Swift versions.

@@ -157,10 +157,12 @@ func testInitialPosition() {
         .bytes(goldenInitialFrame),
     ])
     let events = replay.runSync()
-    guard case .identitySnapshot(let pieces) = events.last else {
+    guard case .identitySnapshot(let pieces) = events.first(where: {
+        if case .identitySnapshot = $0 { return true }; return false
+    }) else {
         XCTFail("Expected identitySnapshot"); return
     }
-    XCTAssertEqual(pieces[0], Piece(.rook, .black))  // a8 in file-major
+    XCTAssertEqual(pieces[0], Piece(type: .rook, color: .white))  // a1 in file-major
 }
 ```
 

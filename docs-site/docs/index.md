@@ -1,6 +1,6 @@
 # BoardKit
 
-BoardKit is a **Foundation-only** Swift package that defines the adapter seam
+BoardKit is a **ChessCore + Foundation** Swift package that defines the adapter seam
 between physical chess boards (BLE and USB-HID) and a chess engine or kernel
 stack — together with a suite of board-agnostic reconciliation kernels, a
 macOS BLE emulator, and a deterministic replay/simulation test harness.
@@ -42,7 +42,7 @@ let replay = ReplayTransport(adapter: adapter, script: [
     .bytes(capturedBLEFrame),         // raw ATT notification payload
 ])
 let events = replay.runSync()
-// events: [.connected, .identitySnapshot([Piece?])]
+// events: [.connected, .identitySnapshot([Piece?]), .ready]
 ```
 
 Or, bypass byte-level decoding and drive session logic with a simulated board:
@@ -52,8 +52,8 @@ import BoardKitTestSupport
 
 let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
 let events = try await sim.executeMove(uci: "e2e4")
-// [squareSensed("e2", isLift: true, piece: Piece(.pawn, .white)),
-//  squareSensed("e4", isLift: false, piece: Piece(.pawn, .white))]
+// [squareSensed("e2", isLift: true, piece: Piece(type: .pawn, color: .white)),
+//  squareSensed("e4", isLift: false, piece: Piece(type: .pawn, color: .white))]
 ```
 
 ## License

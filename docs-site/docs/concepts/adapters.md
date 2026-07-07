@@ -15,7 +15,7 @@ orientation flip for one board family. All adapters import only `BoardKit` and
 | `PegasusAdapter` | Protocol-pinned; hardware-unverified | ✓ | | ✓ | | ✓ |
 | `MillenniumAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | | | |
 | `CertaboAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | | |
-| `ChessUpAdapter` (gen-1) | Protocol-pinned; hardware-unverified | ✓ | | ✓ | | |
+| `ChessUpAdapter` (gen-1) | Protocol-pinned; hardware-unverified | ✓ | | | | |
 
 !!! warning "ChessUp 2"
     ChessUp 2 support is **explicitly unverified — do not ship** to CU2 users.
@@ -51,16 +51,17 @@ let handshake = adapter.handshakeCommands(isReconnect: false)
 
 ## ChessnutAdapter
 
-Covers the Chessnut **Air**, **Air+**, **Pro**, **Go**, and **Move** families.
+Covers the Chessnut **Air**, **Air+**, **Pro**, and **Go** (the "classic profile" boards).
 Protocol-verified against the official Chessnut docs, NSStudent/EasyLinkSwiftSDK
 (MIT), and chessnutech/EasyLinkSDK (MIT).
 
-The Air family (Air / Air+ / Pro / Go) uses the standard Chessnut BLE profile:
+The Air / Air+ / Pro / Go family uses the standard Chessnut BLE profile:
 all golden-frame fixtures from the pinned spec pass. Awaiting physical-board or
 BLE capture-log runtime validation.
 
-The **Move** (motorised, per-piece identity) adds opcode 0x0B per-piece status
-polling and auto-move commands.
+Use `ChessnutGATT.isClassicProfile(name:)` to filter BLE scan results to this
+adapter. For the Chessnut Move (motorised board) see the
+[ChessnutMoveAdapter](#chessnutmoveadapter) section below.
 
 ```swift
 import ChessnutAdapter
@@ -77,6 +78,57 @@ let events = adapter.feed(bytes: blePayload)
 let ledCommand = adapter.encode(.indicateSquares(["e2", "e4"], style: .moveFrom))
 // Returns 10-byte LED frame
 ```
+
+---
+
+## ChessnutMoveAdapter
+
+The Chessnut Move — a motorised board where 34 micro-robot pieces move
+autonomously. Shares all GATT UUIDs with the classic profile but adds
+4-colour LEDs, an auto-move command (opcode 0x42), and per-piece tracking
+(opcode 0x41/0x0B). Hardware-unverified; protocol-pinned against
+chessnutech/chess_move_api (official, facts only; re-derived independently)
+and NSStudent/EasyLinkSwiftSDK (MIT).
+
+Select the Move by exact advertised name: `ChessnutGATT.isMoveProfile(name:)`
+returns `true` only for the string `"Chessnut Move"`. GATT UUIDs alone cannot
+distinguish it from the classic profile.
+
+```swift
+import ChessnutAdapter
+
+var adapter = ChessnutMoveAdapter()
+// capabilities: [.occupancySensing, .pieceIdentity, .perPieceTracking,
+//                .perSquareLEDs, .moveIndication, .motorised, .batteryReporting]
+
+// Feed a raw BLE notification:
+let events = adapter.feed(bytes: blePayload)
+
+// Send an auto-move command (robot executes the move autonomously):
+let autoMoveCmd = ChessnutMoveAdapter.encodeAutoMove(identity: targetBoard, force: true)
+// 35-byte 0x42 frame — write to ChessnutGATT.commandWriteChar
+
+// 4-colour LED indication:
+let ledCmd = adapter.encode(.indicateSquares(["e2", "e4"], style: .moveFrom))
+// 34-byte 0x43 frame (green = .moveFrom, blue = .moveTo, red = .danger)
+
+// Request per-piece tracking snapshot:
+let pieceReq = ChessnutMoveAdapter.pieceStatusRequestData()  // write 41 01 0B
+// Response on notify char: 139-byte frame with 34 × 4-byte piece records
+
+// Request battery level:
+let batReq = ChessnutMoveAdapter.batteryRequestData()  // write 41 01 0C
+```
+
+!!! warning "MTU"
+    The 139-byte piece-status notification will be truncated at the default
+    ATT MTU of 23 bytes. On Android, request MTU ≥ 247 before subscribing to
+    notifications.
+
+!!! note "No auto-move completion frame"
+    Opcode 0x42 has no documented ack or completion notification. FEN frames
+    on 1b7e8262 are suppressed during execution. Session code must poll
+    `pieceStatusRequestData()` or use an external timeout strategy.
 
 ---
 
@@ -131,23 +183,77 @@ against gkalab/cer2nut fixtures.
 ```swift
 import CertaboAdapter
 
+// Default (uncalibrated) — occupancy + LEDs only:
 var adapter = CertaboAdapter()
-// capabilities: [.occupancySensing, .pieceIdentity, .perSquareLEDs, .moveIndication]
+// capabilities: [.occupancySensing, .moveIndication, .perSquareLEDs]
+// .pieceIdentity is NOT set until a calibrated RFID board is detected.
+
+// With calibration — enables piece identity:
+var calibratedAdapter = CertaboAdapter(calibration: myCalibration)
+// After a calibrated RFID board frame arrives, capabilities gain .pieceIdentity.
+// Obtain a CertaboCalibration by calling CertaboCalibration.learn(from:standardStart:)
+// on a series of start-position RFID frames.
 ```
+
+!!! note "Dynamic capabilities"
+    `CertaboAdapter` capabilities are dynamic. The default is
+    `[.occupancySensing, .moveIndication, .perSquareLEDs]`. `.pieceIdentity`
+    is added only when an RFID board is detected AND a `CertaboCalibration` is
+    provided to the adapter. `.perSquareLEDs` is dropped for Spectrum RGB
+    boards (reported `D` status), leaving `.moveIndication` only — the same
+    corner-LED-grid pattern as `MillenniumAdapter`.
 
 ---
 
 ## ChessUpAdapter
 
-ChessUp gen-1 (Bryght Labs). NUS GATT transport, per-square RGB LEDs,
-occupancy sensing. Protocol-pinned against mono424/chessupdriver (MIT,
-commit 589d43ad).
+ChessUp gen-1 (Bryght Labs). NUS GATT transport, occupancy sensing, and
+move-indication LEDs (from/to squares only). Protocol-pinned against
+mono424/chessupdriver (MIT, commit 589d43ad).
 
 ```swift
 import ChessUpAdapter
 
 var adapter = ChessUpAdapter()
-// capabilities: [.occupancySensing, .perSquareLEDs, .moveIndication]
+// capabilities: [.occupancySensing, .moveIndication]
+// Note: .perSquareLEDs is NOT set — the 0x99 command accepts only two squares
+// and injects a remote-move intent, not free-form per-square illumination.
+// This follows the same Millennium precedent: move-indication without
+// per-square contract.
+```
+
+---
+
+## GATT constants for transport authors
+
+Each adapter module exposes a public `*GATT` (or `*BT`/`*Serial`) enum with
+the service/characteristic UUIDs and device-name filters a `BoardTransport`
+implementation needs. You must use these rather than hard-coding strings.
+
+| Adapter | Constants enum | Key constants |
+|---|---|---|
+| `ChessnutAdapter` | `ChessnutGATT` | `boardStateService`, `commandWriteChar`, `isClassicProfile(name:)`, `isMoveProfile(name:)` |
+| `ChessnutMoveAdapter` | `ChessnutGATT` | Same UUIDs as classic; use `isMoveProfile(name:)` to select the Move adapter |
+| `PegasusAdapter` | `PegasusGATT` | `nordicUART`, `writeChar`, `notifyChar`, `factoryNamePrefix` (`"DGT_Pegasus"`) |
+| `MillenniumAdapter` | `MillenniumGATT` | `serviceUUID`, `notifyCharUUID`, `writeCharUUID`, `advertisedName`, `usbVendorID`/`usbProductID` |
+| `CertaboAdapter` | `CertaboSerial`, `CertaboBT` | Serial: `baudRate`, `usbVendorID`/`usbProductID`; BT: `rfcommChannel`, `serviceUUID`, `deviceNameHint` |
+| `ChessUpAdapter` | `ChessUpGATT` | `nusService`, `nusRX`, `nusTX`, `batteryService`, `batteryLevel`, `requestedMTU`, `isChessUp(name:)` |
+
+Example — looking up the Chessnut notify characteristic:
+
+```swift
+import ChessnutAdapter
+
+// In your CoreBluetooth transport:
+let boardStateService = ChessnutGATT.boardStateService  // 1b7e8261-…
+let notifyChar        = ChessnutGATT.boardStateChar     // 1b7e8262-…
+
+// Device-name filter (Air/Air+/Pro/Go vs. Move):
+if ChessnutGATT.isClassicProfile(name: peripheral.name ?? "") {
+    // instantiate ChessnutAdapter()
+} else if ChessnutGATT.isMoveProfile(name: peripheral.name ?? "") {
+    // instantiate ChessnutMoveAdapter()
+}
 ```
 
 ---
