@@ -1,0 +1,67 @@
+site_name: BoardKit
+site_description: A Swift package defining the adapter seam between physical chess boards and a chess engine — plus board-agnostic reconciliation kernels, a BLE emulator, and a deterministic replay/simulation harness.
+site_author: Jared Brewer
+copyright: "BoardKit — a Swift board-adapter seam layer for physical chess boards. MIT licensed."
+
+site_url: https://fianchettochess.app/docs/boardkit/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Getting Started: getting-started.md
+  - Concepts:
+      - Seam vocabulary: concepts/seam-vocabulary.md
+      - Adapter & transport protocols: concepts/adapter-and-transport.md
+      - Board-agnostic kernels: concepts/kernels.md
+      - Sync gate & reconnect policy: concepts/sync-and-reconnect.md
+      - Concrete adapters: concepts/adapters.md
+      - Test support & emulator: concepts/test-support.md
+  - Usage Examples: examples.md
