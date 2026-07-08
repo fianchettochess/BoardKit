@@ -15,13 +15,33 @@ orientation flip for one board family. All adapters import only `BoardKit` and
 | `PegasusAdapter` | Protocol-pinned; hardware-unverified | ✓ | | ✓ | | ✓ |
 | `MillenniumAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | | | |
 | `CertaboAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | | |
-| `ChessUpAdapter` (gen-1) | Protocol-pinned; hardware-unverified | ✓ | | | | |
+| `ChessUpAdapter` (gen-1 / CU2) | **CU2 hardware-verified (2026-07-07)** | ✓ | | | | |
 
-!!! warning "ChessUp 2"
-    ChessUp 2 support is **explicitly unverified — do not ship** to CU2 users.
-    Only circumstantial evidence suggests CU2 keeps the NUS transport. All CU2
-    frame semantics are unknown. The adapter will be updated once a capture log
-    is contributed.
+!!! success "ChessUp 2 — hardware-verified (2026-07-07)"
+    CU2 BLE transport is **identical to gen-1**: NUS service 6E400001-B5A3-F393-E0A9-E50E24DCCA9E,
+    write char 6E400002, notify char 6E400003, Battery 0x180F. No adapter changes required at
+    the transport layer.
+
+    **Verified on physical CU2 hardware:** 0x67 GET_STATE (73-byte board-state frame,
+    home rank correct, 0x40 = empty); 0xB8/0xBB capacitive touch/release; 0xB1
+    new-game/set-state; 0xA3 move frames (`[A3, sub, fromCol, fromRow, toCol, toRow]`).
+    pieceCode in 0xB8 is type-only and color-agnostic (e.g., pawn = 0x00 for both sides).
+
+    **Key protocol discovery — phoneOTB session required:** 0xA3 move reporting is gated
+    behind a 0xB9 game-settings frame with mode 5 (phoneOTB, both sides human, no remote
+    — bytes `B9 05 00 01 00 00 01 00 00 00 00 00`). Standalone AI-mode games never stream
+    moves to the host. `.startSession` now encodes this via `collectionSessionData()`.
+
+    **Ack discipline (hardware-observed):** the board retransmits each 0xA3 until the host
+    writes a 0x21 ack; an unacked flood destabilised the BLE link in testing. 0x97
+    board-side promotions require 0x23. The adapter queues both internally —
+    `takePendingResponses()` drains them; the transport need not inspect raw frames.
+
+    **Still pending (honest):** live castling/promotion/capture 0xA3 shapes; 0xA3 sub-byte
+    semantics; in-app end-to-end runtime test; 0x99 move-indication LEDs on CU2; 0xFD
+    occupancy stream (0x50 enable); 0x66 FEN-load; Android `ChessUpBleManager.kt`; gen-1
+    physical hardware itself untested (but CU2 corroborates the gen-1-pinned transport and
+    frame formats).
 
 ---
 
@@ -207,9 +227,22 @@ var calibratedAdapter = CertaboAdapter(calibration: myCalibration)
 
 ## ChessUpAdapter
 
-ChessUp gen-1 (Bryght Labs). NUS GATT transport, occupancy sensing, and
+ChessUp by Bryght Labs (gen-1 and CU2). NUS GATT transport, occupancy sensing, and
 move-indication LEDs (from/to squares only). Protocol-pinned against
-mono424/chessupdriver (MIT, commit 589d43ad).
+mono424/chessupdriver (MIT, commit 589d43ad); CU2 transport and core frame semantics
+**hardware-verified 2026-07-07** against a physical ChessUp 2 / LightBlue BLE session.
+
+**Two things an integrator must do:**
+
+1. **phoneOTB session before requesting state.** `.startSession` encodes the 0xB9 mode-5
+   frame (`collectionSessionData()`). Without it the board runs in standalone AI or no-phone
+   mode and never streams 0xA3 move frames to the host. On reconnect, send `.requestState`
+   only — re-sending 0xB9 resets the board's internal game score.
+
+2. **Drain acks after every `feed()` call.** Call `adapter.takePendingResponses()` and write
+   the returned bytes to the NUS write characteristic (`ChessUpGATT.nusRX`). The adapter
+   queues a 0x21 ack for every 0xA3 frame (including retransmits) and a 0x23 ack for every
+   0x97 promotion. Failing to drain causes the board to retransmit until it drops the link.
 
 ```swift
 import ChessUpAdapter
@@ -220,6 +253,20 @@ var adapter = ChessUpAdapter()
 // and injects a remote-move intent, not free-form per-square illumination.
 // This follows the same Millennium precedent: move-indication without
 // per-square contract.
+
+// REQUIRED: start a phoneOTB session BEFORE requesting state.
+// Without 0xB9 mode-5 the board never streams 0xA3 move frames.
+let handshake = adapter.handshakeCommands(isReconnect: false)
+// First connect:  [(.startSession, 0.0s), (.requestState, 0.15s)]
+//   .startSession encodes collectionSessionData() — 0xB9 phoneOTB frame
+// Reconnect only: [(.requestState, 0.25s)] — 250 ms link-settle; never re-sends 0xB9 (would reset board score)
+
+// REQUIRED: drain acks after every inbound feed() call.
+let events = adapter.feed(bytes: bleNotification)
+let acks = adapter.takePendingResponses()
+// Write each element of `acks` to ChessUpGATT.nusRX.
+// 0x21 is queued per 0xA3 frame; 0x23 per 0x97 promotion.
+// Skipping this causes the board to retransmit and eventually drop the BLE link.
 ```
 
 ---

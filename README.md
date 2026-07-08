@@ -43,8 +43,8 @@ Foundation.
 | Certabo (classic LED) | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | ✓ | ✓ | | | |
 | Certabo Spectrum RGB | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | | ✓ (9×9 corner) | | | |
 | Tabutronic Sentio | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | | |
-| ChessUp (gen-1) | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | | |
-| ChessUp 2 | **EXPLICITLY UNVERIFIED — do not ship** | ? | ? | ? | ? | | | |
+| ChessUp (gen-1) | **Protocol-pinned; transport + frame formats corroborated on ChessUp 2 hardware; gen-1 unit untested** | ✓ | | | ✓ | | | |
+| ChessUp 2 | **Hardware-verified (game-collection path) 2026-07-07** | ✓ | | | pinned | | svc ✓ (pct readable; adapter: charging flag only) | |
 
 ### Per-board status notes
 
@@ -90,17 +90,42 @@ Foundation.
 
 - **ChessUp (gen-1):** Protocol-pinned against mono424/chessupdriver (MIT,
   commit 589d43ad). NUS GATT transport, per-square RGB LEDs, occupancy
-  sensing. Should work — codec complete and fixtures pass; awaiting
-  physical-board or BLE capture-log validation.
+  sensing. Codec complete and all golden-frame fixtures pass. Transport layer
+  and frame formats (0x67/0xB1/0xB8/0xBB/0xA3) corroborated by a ChessUp 2
+  hardware session (2026-07-07) — CU2 and gen-1 share an identical NUS GATT
+  profile, and every opcode exercised so far matches the gen-1 pins. Gen-1
+  unit itself remains untested.
 
-- **ChessUp 2:** EXPLICITLY UNVERIFIED — do not ship to CU2 users. Only
-  circumstantial evidence (Bryght Labs engineer tool chessup-pc, Apr-2026)
-  suggests CU2 keeps the NUS transport, device name prefix "ChessUp", and
-  opcode 0xB2 board-info. All other CU2 frame semantics are UNKNOWN.
-  Runtime-probe: send GET_STATE (0x67); if a 73-byte 0x67 reply arrives, CU1
-  profile is live. Surface the 0xB2 model string in telemetry for CU2
-  divergence diagnosis. ChessUp 2 support is flagged experimental/unsupported
-  until a capture log is contributed and hardware-verified.
+- **ChessUp 2:** Hardware-verified (game-collection path) 2026-07-07 on a
+  physical ChessUp 2 (Bryght Labs, LightBlue BLE session). NUS transport
+  confirmed identical to gen-1 constants — same service UUID
+  (6E400001-B5A3-F393-E0A9-E50E24DCCA9E), same characteristic UUIDs, same
+  device-name prefix "ChessUp". Verified on hardware: 0x67 GET_STATE returns
+  the 73-byte board-state frame (RNBQKBNR home rank, 0x40 = empty); 0xB8
+  capacitive-touch + 0xBB release; 0xB1 new-game/set-state; 0xA3 move frames
+  (1.d4 arrived as A3 35 03 01 03 03; sub byte 0x35 semantics undecoded).
+  Battery service 0x180F present and readable (e.g. 96%); adapter currently
+  surfaces the 0x33 charging flag only.
+
+  **Key protocol discovery:** 0xA3 move reporting is GATED behind a phoneOTB
+  session. Standalone board games (builtInAI mode 6 / noPhoneOTB mode 7) never
+  stream moves to a connected host. `.startSession` writes the 0xB9 mode-5
+  (phoneOTB) frame to unlock move reporting; hardware-verified. This is what
+  `ChessUpAdapter.collectionSessionData()` / `.startSession` encodes.
+
+  **Ack discipline (hardware-observed):** The board retransmits each 0xA3 until
+  the host writes a 0x21 ack. A passive listener that never acked saw the same
+  frame approximately five times and the unacked flood destabilised the BLE link
+  until it dropped (while the board's own game stayed live). 0x97 board-side
+  promotions require a 0x23 ack. The adapter queues these internally;
+  transports drain them via `takePendingResponses()` — no raw-frame inspection
+  needed in the transport layer.
+
+  **Still pending:** castling/promotion/capture 0xA3 frame shapes; the 0xA3 sub
+  byte (0x35) semantics; 0x99 move-indication LEDs untested on CU2; 0xFD
+  occupancy stream (0x50 enable) untested on CU2; 0x66 FEN-load untested on
+  CU2; in-app end-to-end runtime test; Android Kotlin manager (Swift side
+  compiled; ChessUpBleManager.kt not yet written).
 
 ## Source attributions by adapter
 

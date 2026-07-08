@@ -10,18 +10,21 @@ import BoardKit
 // 0x10 assistance frame; occupancy sensing via 0x67 snapshot, 0xFD FD stream,
 // and 0xA3 move events.
 //
-// ⚠️  HARDWARE STATUS: Protocol-verified against three pinned sources (see below);
-//     awaiting physical-board or capture-log validation.
+// HARDWARE STATUS (gen-1): Protocol-verified against three pinned sources
+//     (see below). Transport layer and frame formats (0x67/0xB1/0xB8/0xBB/
+//     0xA3) corroborated by ChessUp 2 hardware session (2026-07-07) —
+//     identical NUS GATT profile confirmed. Gen-1 unit itself untested.
 //
-// ⚠️  ChessUp 2 HARDWARE COVERAGE: EXPLICITLY UNVERIFIED. Every byte in this
-//     file was derived from ChessUp-1-era sources. Only circumstantial evidence
-//     (Bryght Labs engineer tool chessup-pc, Apr-2026) suggests CU2 keeps the
-//     NUS transport, device name prefix "ChessUp", and opcode 0xB2 board-info.
-//     All other CU2 frame semantics are UNKNOWN. Runtime-probe: send GET_STATE
-//     (0x67); if a 73-byte 0x67 reply arrives, CU1 profile is live. Capture
-//     the 0xB2 model string and surface it in telemetry for CU2 divergence
-//     diagnosis. ChessUp 2 support is flagged experimental/unsupported until
-//     hardware-verified.
+// ChessUp 2 HARDWARE COVERAGE: Verified (game-collection path) 2026-07-07
+//     on a physical ChessUp 2 (Bryght Labs). NUS transport + characteristic
+//     UUIDs confirmed identical to gen-1 constants; device name "ChessUp".
+//     Verified on hardware: 0x67 board-state (73 bytes, decodes correctly),
+//     0xB8/0xBB capacitive touch/release, 0xB1 set-state, 0xA3 move frames
+//     (gated behind 0xB9 phoneOTB session — see collectionSessionData()),
+//     0x21/0x23 ack discipline. Still pending: castling/promotion/capture
+//     0xA3 shapes; sub byte 0x35 semantics; 0x99 LEDs on CU2; 0xFD stream
+//     on CU2; 0x66 FEN-load on CU2; in-app end-to-end runtime test; Android
+//     ChessUpBleManager.kt.
 //
 // Sources:
 //   [PRIMARY]    mono424/chessupdriver @ 589d43ad2b5eb32b1bcdcca9db2b4909efe5d9bb
@@ -223,9 +226,9 @@ private func chessUpFrameLength(forOpcode opcode: UInt8) -> Int? {
 /// Protocol-verified against [PRIMARY] mono424/chessupdriver (MIT) and
 /// corroborated by [FACTS-ONLY] bluecheese and chessup-pc. All golden fixtures
 /// (F1–F9 from the pinned spec) are exercised in `ChessUpAdapterTests.swift`.
-/// Awaiting physical-board or BLE capture-log validation.
-/// ChessUp 2 support is flagged experimental until hardware-verified — see the
-/// top-of-file warning.
+/// ChessUp 2 hardware-verified (game-collection path) 2026-07-07: NUS
+/// transport, 0x67/0xB8/0xBB/0xB1/0xA3 confirmed on physical hardware; see
+/// top-of-file for the pending list. Gen-1 unit itself remains untested.
 public struct ChessUpAdapter: BoardAdapter {
 
     // MARK: - State
