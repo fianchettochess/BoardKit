@@ -495,3 +495,148 @@ import BoardKitEmulator
     #expect(layout.writableCharacteristicUUIDs == [ChessUpGATT.nusRX])
     #expect(ChessUpGATT.isChessUp(name: personality.advertisedName))
 }
+
+// MARK: - ChessUp 0xA3 move-frame gating + retransmit (hardware-verified 2026-07-07)
+
+/// Before any 0xB9 (or in builtInAI/noPhoneOTB modes) no 0xA3 must be emitted.
+@Test func chessUpNoMoveA3WithoutPhoneOTBMode() {
+    // ── nil mode (no 0xB9 ever sent) ──────────────────────────────────────────
+    var pNil = ChessUpPersonality()
+    #expect(pNil.sessionModeForTesting == nil)
+    let liftNil  = pNil.frames(for: .squareSensed(square: "e2", isLift: true,  piece: nil))
+    let placeNil = pNil.frames(for: .squareSensed(square: "e4", isLift: false, piece: nil))
+    #expect(!(liftNil + placeNil).contains { $0.data.first == 0xA3 },
+            "No 0xA3 before any 0xB9 (nil mode)")
+
+    // ── builtInAI mode 6 ──────────────────────────────────────────────────────
+    var p6 = ChessUpPersonality()
+    let b9mode6 = ChessUpAdapter.gameSettingsData(
+        mode: 6, whiteType: 0, whiteLevel: 1, whiteLock: 0,
+        blackType: 0, blackLevel: 1, blackLock: 0,
+        hintLimit: 0, whiteRemote: 0, blackRemote: 0, deviceUser: 0)
+    _ = p6.handleHostWrite(b9mode6)
+    #expect(p6.sessionModeForTesting == 6)
+    let lift6  = p6.frames(for: .squareSensed(square: "d2", isLift: true,  piece: nil))
+    let place6 = p6.frames(for: .squareSensed(square: "d4", isLift: false, piece: nil))
+    #expect(!(lift6 + place6).contains { $0.data.first == 0xA3 },
+            "No 0xA3 in builtInAI mode (6)")
+
+    // ── noPhoneOTB mode 7 ─────────────────────────────────────────────────────
+    var p7 = ChessUpPersonality()
+    let b9mode7 = ChessUpAdapter.gameSettingsData(
+        mode: 7, whiteType: 0, whiteLevel: 1, whiteLock: 0,
+        blackType: 0, blackLevel: 1, blackLock: 0,
+        hintLimit: 0, whiteRemote: 0, blackRemote: 0, deviceUser: 0)
+    _ = p7.handleHostWrite(b9mode7)
+    let lift7  = p7.frames(for: .squareSensed(square: "c2", isLift: true,  piece: nil))
+    let place7 = p7.frames(for: .squareSensed(square: "c4", isLift: false, piece: nil))
+    #expect(!(lift7 + place7).contains { $0.data.first == 0xA3 },
+            "No 0xA3 in noPhoneOTB mode (7)")
+}
+
+/// After 0xB9 mode 5 (phoneOTB) a completed move emits a 6-byte 0xA3 frame
+/// with hardware-observed sub byte 0x35, correct col/row encoding, that the
+/// host ChessUpAdapter decodes into the right squareSensed pair AND queues
+/// exactly one 0x21 ack in takePendingResponses().
+@Test func chessUpPhoneOTBMovesEmitA3WithCorrectEncoding() {
+    var personality = ChessUpPersonality()
+
+    // Open the phoneOTB recording session.
+    let b9 = ChessUpAdapter.collectionSessionData()   // 0xB9 mode 5
+    _ = personality.handleHostWrite(b9)
+    #expect(personality.sessionModeForTesting == 5)
+
+    // Drive e2→e4: lift, then place.
+    let liftFrames  = personality.frames(for: .squareSensed(square: "e2", isLift: true,  piece: nil))
+    let placeFrames = personality.frames(for: .squareSensed(square: "e4", isLift: false, piece: nil))
+
+    // No 0xA3 on the lift alone (move is incomplete).
+    #expect(!liftFrames.contains { $0.data.first == 0xA3 },
+            "No 0xA3 on lift alone — move not yet complete")
+
+    // Exactly one 0xA3 on the place event (move complete).
+    let a3Frames = placeFrames.filter { $0.data.first == 0xA3 && $0.data.count == 6 }
+    #expect(a3Frames.count == 1, "Exactly one 0xA3 frame when move completes")
+
+    let a3 = [UInt8](a3Frames[0].data)
+    // Byte layout: [A3, 0x35, fromCol, fromRow, toCol, toRow]
+    #expect(a3[0] == 0xA3)
+    #expect(a3[1] == 0x35, "Sub byte must be 0x35 (hardware-observed constant)")
+    // e2: file e=4, rank0idx=1  →  col=4, row=1
+    #expect(a3[2] == 4 && a3[3] == 1,
+            "From square e2: col \(a3[2]) row \(a3[3]) (expected 4, 1)")
+    // e4: file e=4, rank0idx=3  →  col=4, row=3
+    #expect(a3[4] == 4 && a3[5] == 3,
+            "To square e4: col \(a3[4]) row \(a3[5]) (expected 4, 3)")
+
+    // ── Round-trip: host ChessUpAdapter must decode the A3 correctly ──────────
+    var hostAdapter = ChessUpAdapter()
+    let events = hostAdapter.feed(bytes: a3Frames[0].data)
+    let sensed = events.compactMap { e -> (String, Bool)? in
+        if case .squareSensed(let sq, let lift, _) = e { return (sq, lift) }
+        return nil
+    }
+    #expect(sensed.count == 2, "0xA3 must decode to exactly 2 squareSensed events on host")
+    #expect(sensed[0] == ("e2", true),  "First host event: lift from e2")
+    #expect(sensed[1] == ("e4", false), "Second host event: place on e4")
+
+    // Host adapter queues exactly one 0x21 ack per 0xA3 frame.
+    let acks = hostAdapter.takePendingResponses()
+    #expect(acks == [ChessUpAdapter.ackMoveData()],
+            "Host must queue exactly one 0x21 ack for the 0xA3")
+}
+
+/// Retransmit model: an unacked 0xA3 is re-emitted alongside subsequent
+/// notifications; the host adapter deduplicates the retransmit in its event
+/// stream but still queues an ack for EVERY raw frame; personality clears
+/// the pending retransmit when it receives 0x21.
+@Test func chessUpA3RetransmitClearedByAck() {
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    // Complete a move (e2→e4).
+    _ = personality.frames(for: .squareSensed(square: "e2", isLift: true,  piece: nil))
+    _ = personality.frames(for: .squareSensed(square: "e4", isLift: false, piece: nil))
+
+    // Subsequent event BEFORE 0x21: the pending A3 must be retransmitted.
+    let nextFrames = personality.frames(for: .squareSensed(square: "e7", isLift: true, piece: nil))
+    let retransmits = nextFrames.filter { $0.data.first == 0xA3 && $0.data.count == 6 }
+    #expect(retransmits.count == 1,
+            "A3 must be retransmitted on the next board notification before 0x21")
+
+    // ── Host-side dedup + ack-every-raw contract ──────────────────────────────
+    // Simulate the host adapter receiving the original A3, then the retransmit.
+    var hostAdapter = ChessUpAdapter()
+    // Prime: original A3 (e2→e4 in col/row)
+    let originalA3 = Data([0xA3, 0x35, 4, 1, 4, 3])
+    let firstEvents  = hostAdapter.feed(bytes: originalA3)
+    _ = hostAdapter.takePendingResponses()   // drain the first ack
+    let firstSensed = firstEvents.compactMap { e -> (String, Bool)? in
+        if case .squareSensed(let sq, let lift, _) = e { return (sq, lift) }
+        return nil
+    }
+    #expect(firstSensed.count == 2, "Original A3: 2 squareSensed events")
+
+    // Feed the retransmit (byte-identical A3).
+    let retransmitEvents = hostAdapter.feed(bytes: retransmits[0].data)
+    let retransmitSensed = retransmitEvents.compactMap { e -> (String, Bool)? in
+        if case .squareSensed(let sq, let lift, _) = e { return (sq, lift) }
+        return nil
+    }
+    #expect(retransmitSensed.isEmpty,
+            "Host deduplicates the retransmitted A3 — no squareSensed events in event stream")
+    let acksForRetransmit = hostAdapter.takePendingResponses()
+    #expect(acksForRetransmit == [ChessUpAdapter.ackMoveData()],
+            "Host acks every raw A3 even when deduped from event stream")
+
+    // ── Personality clears pending move on 0x21 ───────────────────────────────
+    let ackActions = personality.handleHostWrite(Data([0x21]))
+    let hasLog = ackActions.contains { if case .log = $0 { return true }; return false }
+    #expect(hasLog, "0x21 must produce at least one .log action")
+
+    // After 0x21, the next event must NOT carry an A3 retransmit.
+    // Use occupancySnapshot to avoid triggering new A3 assembly.
+    let afterAckFrames = personality.frames(for: .occupancySnapshot([Bool](repeating: false, count: 64)))
+    #expect(!afterAckFrames.contains { $0.data.first == 0xA3 },
+            "No A3 retransmit after 0x21 ack — pendingUnackedMove must be cleared")}
+
