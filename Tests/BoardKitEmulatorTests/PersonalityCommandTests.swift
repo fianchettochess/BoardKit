@@ -432,7 +432,9 @@ import BoardKitEmulator
 
 @Test func chessUpGetStateReturns73ByteFrame() {
     var personality = ChessUpPersonality()
-    let write = ChessUpAdapter().encode(.startSession)!  // Data([0x67])
+    // GET_STATE is .requestState (0x67); .startSession now opens the phoneOTB
+    // recording session (0xB9) rather than probing state.
+    let write = ChessUpAdapter().encode(.requestState)!  // Data([0x67])
     #expect(write == Data([0x67]))
     let actions = personality.handleHostWrite(write)
     guard case .notify(let frame) = actions.first else {

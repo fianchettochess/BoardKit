@@ -100,4 +100,30 @@ public protocol BoardAdapter: Sendable {
     /// - Reconnect:
     ///   `[(.requestState, 0.25)]`
     func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)]
+
+    /// Mandatory wire-level responses the adapter queued while parsing the most
+    /// recent `feed(bytes:)` input — acknowledgements some board protocols
+    /// require *out of band* from the semantic event stream.
+    ///
+    /// The transport MUST call this immediately after each `feed(bytes:)` and
+    /// write every returned value back to the board's write characteristic.
+    /// Draining is destructive: each queued response is returned exactly once.
+    ///
+    /// ## Why this exists (ChessUp)
+    /// The ChessUp board **retransmits every `0xA3` move frame until the host
+    /// writes a `0x21` ack** (and board-side promotions until a `0x23` ack).
+    /// Leaving them unacked wedges the board and floods the notify pipe until
+    /// the BLE link drops. Queuing the acks *in the adapter* (co-located with
+    /// the frame parser that knows a `0xA3`/`0x97` just arrived) keeps that
+    /// protocol detail out of every platform transport.
+    ///
+    /// ## Default
+    /// Empty. Boards with no ack protocol (Square Off, Chessnut) inherit the
+    /// default and need not implement it.
+    mutating func takePendingResponses() -> [Data]
+}
+
+public extension BoardAdapter {
+    /// Default: no out-of-band responses. Only ack-based protocols override this.
+    mutating func takePendingResponses() -> [Data] { [] }
 }

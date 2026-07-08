@@ -198,24 +198,25 @@ private func chessUpFrameLength(forOpcode opcode: UInt8) -> Int? {
 ///
 /// ## Ack discipline
 ///
-/// **0xA3 move frames**: The board retransmits 0xA3 until it receives a `0x21`
-/// ack. The adapter deduplicates consecutive identical 0xA3 frames (no
-/// double-event). The transport MUST send `ChessUpAdapter.ackMoveData()`
-/// (`Data([0x21])`) using a **write-with-response** characteristic write after
-/// **every raw 0xA3 BLE notification** it receives — not just once per
-/// adapter-emitted event pair. If the first write is lost, the dedup guard
-/// means no further events arrive to trigger a retry; only the transport,
-/// operating below the dedup layer, can guarantee delivery. This reproduces
-/// bluecheese's until-confirmed ack-loop guarantee. [FACTS-ONLY: bluecheese]
+/// The board's protocol is ack-driven: it **retransmits `0xA3` move frames until
+/// it receives a `0x21` ack**, and board-side promotions (`0x97`) until a `0x23`
+/// ack. Left unacked, it floods the notify pipe and the BLE link eventually drops
+/// (hardware-observed 2026-07-07: a passive listener that never acks got a
+/// relentless retransmit "wave" and was disconnected after a couple of moves).
 ///
-/// **0x97 board-side promotion frames**: The board sends `[0x97, piece]` when
-/// the player promotes a pawn. The transport MUST ack with
-/// `ChessUpAdapter.ackBoardPromotionData()` (`Data([0x23])`) after every raw
-/// 0x97 notification. The adapter surfaces 0x97 as `.raw`; the transport
-/// MUST inspect raw frames for `raw[0] == 0x97` and write the ack. See the
-/// `ackBoardPromotionData()` doc for the workaround contract. A fully typed
-/// `BoardEvent.promotion` case (medium-term fix) would carry the ack
-/// requirement in the API rather than comments.
+/// This adapter handles that **internally**: `feed(bytes:)` enqueues the correct
+/// ack the instant it parses a `0xA3` or `0x97` (for EVERY raw frame, even a
+/// byte-identical `0xA3` retransmit that the dedup guard drops from the event
+/// stream). The transport's only obligation is to call
+/// `takePendingResponses()` after each `feed(bytes:)` and write every returned
+/// value back — it does NOT inspect raw frames. This keeps the ack protocol in
+/// one place instead of duplicating fragile raw-byte inspection across every
+/// platform transport. [FACTS-ONLY: bluecheese until-confirmed ack loop]
+///
+/// `0x97` is still surfaced as `.raw` (BoardEvent has no typed promotion case
+/// yet); a future `BoardEvent.promotion` case would carry the semantics in the
+/// API. The ack, however, no longer depends on the transport noticing the raw
+/// frame — it is queued regardless.
 ///
 /// ## Hardware status
 ///
@@ -250,6 +251,16 @@ public struct ChessUpAdapter: BoardAdapter {
     /// suppressed as a retransmit. bluecheese clears its equivalent field
     /// (`m_previousMove`) on `setBoardState` for exactly this reason.
     private var lastA3Frame: [UInt8] = []
+
+    /// Mandatory acks queued while parsing inbound frames, drained by the
+    /// transport via `takePendingResponses()` after each `feed(bytes:)`.
+    ///
+    /// The board retransmits `0xA3` until it receives a `0x21` ack and board-side
+    /// promotions (`0x97`) until a `0x23` ack; unacked, it floods the notify pipe
+    /// and the link eventually drops. We enqueue the ack the instant the frame is
+    /// parsed — for EVERY raw `0xA3`, even ones deduped out of the event stream —
+    /// so the transport writes it back without having to inspect raw bytes itself.
+    private var pendingResponses: [Data] = []
 
     // MARK: - BoardAdapter conformance
 
@@ -302,23 +313,30 @@ public struct ChessUpAdapter: BoardAdapter {
     ///
     /// ## Mapping
     /// ```
-    /// .startSession              → Data([0x67])         GET_STATE / handshake probe
-    /// .requestState              → Data([0x67])         GET_STATE
-    /// .indicateSquares([f,t], _) → Data([0x99, f, t])  show move on board LEDs
-    /// .indicateSquares(≠2, _)   → nil                  unsupported (see LED note)
-    /// .executeMove               → nil                  not motorised
+    /// .startSession              → collectionSessionData()  0xB9 phoneOTB (opens recording)
+    /// .requestState              → Data([0x67])             GET_STATE snapshot
+    /// .indicateSquares([f,t], _) → Data([0x99, f, t])       show move on board LEDs
+    /// .indicateSquares(≠2, _)   → nil                       unsupported (see LED note)
+    /// .executeMove               → nil                       not motorised
     /// .custom(data)              → data verbatim
     /// ```
+    ///
+    /// `.startSession` opens a phoneOTB recording session (`0xB9`, mode 5). This
+    /// is REQUIRED to receive `0xA3` move reports: standalone board games run in
+    /// builtInAI (6) / noPhoneOTB (7), which never stream moves to the host.
+    /// Hardware-verified 2026-07-07 — see `collectionSessionData()`. It is omitted
+    /// on reconnect (see `handshakeCommands`) so a mid-game drop is not reset.
     public func encode(_ command: BoardCommand) -> Data? {
         switch command {
         case .startSession:
-            // GET_STATE: handshake probe. Board replies with a 73-byte 0x67 frame;
-            // the first reply triggers .ready emission.
-            // [DISCREPANCY D5] primary sends bare 0x67; bluecheese sends 0x67 0x00.
-            // Both accepted by the firmware — send bare. FOLLOW: primary. [PRIMARY]
-            return Data([0x67])
+            // Open a phoneOTB recording session so the board reports moves (0xA3).
+            return Self.collectionSessionData()
 
         case .requestState:
+            // GET_STATE: board replies with a 73-byte 0x67 snapshot (position
+            // anchor); the first reply in a connect cycle triggers .ready.
+            // [DISCREPANCY D5] primary sends bare 0x67; bluecheese sends 0x67 0x00.
+            // Both accepted by the firmware — send bare. FOLLOW: primary. [PRIMARY]
             return Data([0x67])
 
         case .indicateSquares(let squares, _):
@@ -358,12 +376,16 @@ public struct ChessUpAdapter: BoardAdapter {
 
     public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
-            // Allow 250 ms for the BLE link to stabilise, then reprobe state.
-            // Pattern mirrors ChessnutAdapter's reconnect delay.
-            return [(.startSession, 0.25)] // 250ms
+            // Reconnect: DO NOT resend .startSession — that opens a fresh phoneOTB
+            // game (0xB9) and would wipe the in-progress score. Only re-probe state
+            // (0x67) after a 250 ms link-settle. Mirrors the SquareOff/Chessnut
+            // reconnect pattern (requestState only).
+            return [(.requestState, 0.25)] // 250ms
         }
-        // First connect: probe immediately (no required delay before GET_STATE).
-        return [(.startSession, 0)]
+        // First connect: open the phoneOTB recording session (0xB9), then read the
+        // starting-position anchor (0x67) after a short settle. Without the session
+        // the board never streams 0xA3 moves.
+        return [(.startSession, 0), (.requestState, 0.15)]
     }
 
     /// Reset the framing buffer and per-session state.
@@ -383,6 +405,16 @@ public struct ChessUpAdapter: BoardAdapter {
         buffer = []
         isFirstStateFrame = true
         lastA3Frame = []
+        pendingResponses = []
+    }
+
+    /// Drain the acks queued by the frame parser during the preceding
+    /// `feed(bytes:)` call(s). See the `BoardAdapter.takePendingResponses()`
+    /// contract — the transport MUST write each returned value back to the
+    /// board. Destructive: the queue is emptied.
+    public mutating func takePendingResponses() -> [Data] {
+        defer { pendingResponses.removeAll(keepingCapacity: true) }
+        return pendingResponses
     }
 
     // MARK: - Static wire helpers (ChessUp-specific command encoders)
@@ -425,6 +457,31 @@ public struct ChessUpAdapter: BoardAdapter {
             blackType,  blackLevel, blackLock,
             hintLimit, whiteRemote, blackRemote, deviceUser,
         ])
+    }
+
+    /// The `0xB9` frame that opens a **passive game-collection session**:
+    /// phoneOTB mode (5), both sides human, no remote-move injection, no hints.
+    ///
+    /// Wire: `B9 05 00 01 00 00 01 00 00 00 00 00`.
+    ///
+    /// This is the frame that unlocks `0xA3` move reporting. Standalone board
+    /// games run in `builtInAI` (6) or `noPhoneOTB` (7) and never stream moves to
+    /// a connected host; sending this puts the board in "over-the-board game, phone
+    /// present to record" mode, after which every completed move arrives as `0xA3`
+    /// (and must be `0x21`-acked — see `takePendingResponses()`).
+    ///
+    /// Hardware-verified on a ChessUp 2 (2026-07-07): `1.d4` reported as
+    /// `A3 35 03 01 03 03` only after this frame was written. The host supplies no
+    /// moves and drives nothing — both sides are human and neither is remote.
+    public static func collectionSessionData() -> Data {
+        gameSettingsData(
+            mode: 5,                                   // phoneOTB
+            whiteType: 0, whiteLevel: 1, whiteLock: 0, // human
+            blackType: 0, blackLevel: 1, blackLock: 0, // human
+            hintLimit: 0,                              // no hints
+            whiteRemote: 0, blackRemote: 0,            // moves come from the board, not the app
+            deviceUser: 0
+        )
     }
 
     /// Encode a `0x66` load-FEN frame (primary framing).
@@ -493,34 +550,25 @@ public struct ChessUpAdapter: BoardAdapter {
         return Data(bytes)
     }
 
-    /// The `0x21` ack byte the transport MUST send after every 0xA3-derived
-    /// move-event pair.
+    /// The `0x21` ack byte the board expects after every `0xA3` move frame.
     ///
-    /// The board retransmits 0xA3 frames until it receives this ack. Failure
-    /// to send it promptly will wedge the board. Consecutive identical 0xA3
-    /// frames are deduplicated by the adapter (no double-event emitted), but
-    /// the transport MUST still ack every raw 0xA3 notification received.
-    ///
-    /// Usage: `transport.send(ChessUpAdapter.ackMoveData())`
+    /// The board retransmits `0xA3` until it receives this ack; failing to send it
+    /// wedges the board and floods the link. The adapter enqueues this
+    /// automatically for every raw `0xA3` (see `takePendingResponses()`), so
+    /// callers do not normally invoke it directly — it is exposed for testing and
+    /// for transports that want to name the ack explicitly.
     public static func ackMoveData() -> Data {
         Data([0x21])
     }
 
-    /// The `0x23` ack byte the transport MUST send after every board-side 0x97
+    /// The `0x23` ack byte the board expects after every board-side `0x97`
     /// promotion-pick frame.
     ///
-    /// The board sends `[0x97, piece]` when the player promotes a pawn. The adapter
-    /// surfaces it as `.raw` (see class-level ack discipline note). Because
-    /// `BoardEvent.raw`'s contract forbids session code from branching on it, the
-    /// transport — which operates below the session — MUST inspect raw BLE
-    /// notification bytes for the 0x97 opcode directly and send this ack.
-    ///
-    /// Temporary workaround: check `rawNotification[0] == 0x97` and write this
-    /// data using write-with-response on the NUS TX characteristic. A typed
-    /// `BoardEvent.promotion` case is the medium-term fix and will carry this
-    /// ack requirement in the API rather than comments.
-    ///
-    /// Usage: `transport.send(ChessUpAdapter.ackBoardPromotionData())`
+    /// The board sends `[0x97, piece]` when the player promotes a pawn and
+    /// retransmits until acked. The adapter enqueues this automatically for every
+    /// raw `0x97` (see `takePendingResponses()`); the transport drains the queue
+    /// and no longer needs to inspect raw frames for the opcode. Exposed for
+    /// testing and explicit naming.
     public static func ackBoardPromotionData() -> Data {
         Data([0x23])
     }
@@ -592,6 +640,9 @@ public struct ChessUpAdapter: BoardAdapter {
         case 0x67:
             return processBoardStateFrame(frame)
         case 0xA3:
+            // Ack EVERY raw 0xA3 (0x21) — even a byte-identical retransmit that
+            // dedups out of the event stream below. The board resends until acked.
+            pendingResponses.append(Self.ackMoveData())
             return processMoveFromBoardFrame(frame)
         case 0x33:
             // Battery-charging status [B0, 0/1]: carries only a flag, not a
@@ -626,15 +677,11 @@ public struct ChessUpAdapter: BoardAdapter {
             // [PRIMARY+FACTS-ONLY: chessup-pc (manufacturer tool) confirms presence.]
             return [.raw(Data(frame))]
         case 0x97:
-            // Board-side promotion pick: [97, piece 1..4]. Host MUST ack with 0x23.
-            // [FACTS-ONLY: bluecheese; see D2 for why this is not 0xA3-based.]
-            //
-            // ⚠️  ACK WORKAROUND: Forwarded as .raw because BoardEvent has no typed
-            // promotion case. The transport MUST inspect every .raw frame for
-            // raw[0] == 0x97 and send ackBoardPromotionData() (Data([0x23])) on
-            // every occurrence. See class-level ack discipline note and
-            // ackBoardPromotionData() doc. This workaround is temporary; a typed
-            // BoardEvent.promotion case is the medium-term fix.
+            // Board-side promotion pick: [97, piece 1..4]. Host MUST ack with 0x23
+            // or the board retransmits. Queue the ack here (drained by the transport
+            // via takePendingResponses); still forwarded as .raw because BoardEvent
+            // has no typed promotion case yet. [FACTS-ONLY: bluecheese; see D2.]
+            pendingResponses.append(Self.ackBoardPromotionData())
             return [.raw(Data(frame))]
         case 0xBD:
             // Undo/takeback performed on board. [FACTS-ONLY: bluecheese]

@@ -575,17 +575,23 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
 
 // MARK: - Handshake commands
 
-@Test func handshakeFirstConnectIsGetState() {
+@Test func handshakeFirstConnectOpensSessionThenAnchors() {
     let adapter = ChessUpAdapter()
     let cmds = adapter.handshakeCommands(isReconnect: false)
-    #expect(cmds.count == 1)
-    #expect(adapter.encode(cmds[0].command) == Data([0x67]))
+    // First connect: open the phoneOTB recording session (0xB9), then read the
+    // 0x67 position anchor. Without the session the board never streams moves.
+    #expect(cmds.count == 2)
+    #expect(adapter.encode(cmds[0].command) == ChessUpAdapter.collectionSessionData())
     #expect(cmds[0].delayBefore == .zero)
+    #expect(adapter.encode(cmds[1].command) == Data([0x67]))
+    #expect(cmds[1].delayBefore == 0.15)
 }
 
-@Test func handshakeReconnectHasDelay() {
+@Test func handshakeReconnectResumesWithoutReset() {
     let adapter = ChessUpAdapter()
     let cmds = adapter.handshakeCommands(isReconnect: true)
+    // Reconnect must NOT resend the 0xB9 session-start (that resets the score) —
+    // only re-probe state with 0x67 so the in-progress game resumes.
     #expect(cmds.count == 1)
     #expect(adapter.encode(cmds[0].command) == Data([0x67]))
     #expect(cmds[0].delayBefore == 0.25)
@@ -831,10 +837,47 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
 
 // MARK: - Misc acks and commands
 
-@Test func startSessionAndRequestStateEncode() {
+@Test func startSessionOpensPhoneOTBAndRequestStateReadsSnapshot() {
     let adapter = ChessUpAdapter()
-    #expect(adapter.encode(.startSession) == Data([0x67]))
+    // .startSession now opens the phoneOTB recording session (0xB9 mode 5), the
+    // frame that unlocks 0xA3 move reporting; .requestState reads the 0x67 snapshot.
+    #expect(adapter.encode(.startSession) == ChessUpAdapter.collectionSessionData())
+    #expect(adapter.encode(.startSession) == Data([0xB9, 0x05, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]))
     #expect(adapter.encode(.requestState) == Data([0x67]))
+}
+
+// MARK: - Pending-response (ack) drain
+
+@Test func feedQueuesMoveAckDrainedByTakePendingResponses() {
+    var adapter = ChessUpAdapter()
+    // A 0xA3 move frame must queue a single 0x21 ack, drained destructively.
+    _ = adapter.feed(bytes: Data([0xA3, 0x35, 0x04, 0x01, 0x04, 0x03])) // e2e4
+    #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackMoveData()])
+    #expect(adapter.takePendingResponses() == [], "drain must be destructive")
+}
+
+@Test func everyRawA3IsAckedEvenWhenDeduped() {
+    var adapter = ChessUpAdapter()
+    let a3 = Data([0xA3, 0x35, 0x04, 0x01, 0x04, 0x03])
+    // Two byte-identical 0xA3 frames: the second dedups out of the EVENT stream,
+    // but BOTH must still be acked (the board retransmits until acked).
+    _ = adapter.feed(bytes: a3)
+    _ = adapter.feed(bytes: a3)
+    #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackMoveData(), ChessUpAdapter.ackMoveData()])
+}
+
+@Test func boardPromotionQueuesPromotionAck() {
+    var adapter = ChessUpAdapter()
+    // 0x97 board-side promotion pick must queue the 0x23 ack.
+    _ = adapter.feed(bytes: Data([0x97, 0x04])) // promote to queen
+    #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackBoardPromotionData()])
+}
+
+@Test func adaptersWithoutAckProtocolReturnNoResponses() {
+    // The default BoardAdapter implementation returns no pending responses;
+    // ChessUp with no inbound frames likewise has an empty queue.
+    var adapter = ChessUpAdapter()
+    #expect(adapter.takePendingResponses() == [])
 }
 
 @Test func enableRawStreamData() {
