@@ -216,10 +216,9 @@ private func chessUpFrameLength(forOpcode opcode: UInt8) -> Int? {
 /// one place instead of duplicating fragile raw-byte inspection across every
 /// platform transport. [FACTS-ONLY: bluecheese until-confirmed ack loop]
 ///
-/// `0x97` is still surfaced as `.raw` (BoardEvent has no typed promotion case
-/// yet); a future `BoardEvent.promotion` case would carry the semantics in the
-/// API. The ack, however, no longer depends on the transport noticing the raw
-/// frame — it is queued regardless.
+/// `0x97` is now decoded as `BoardEvent.promotionPick(piece:)` so the session
+/// can auto-resolve the picker without user interaction. The ack is queued
+/// for every raw `0x97` frame regardless of whether the piece byte is valid.
 ///
 /// ## Hardware status
 ///
@@ -277,7 +276,8 @@ public struct ChessUpAdapter: BoardAdapter {
     /// - `0xFD 0xFD` (10 bytes): occupancy bitmap → `occupancySnapshot`
     /// - `0x67` (73 bytes):      full board state → `occupancySnapshot` (+ `.ready` on first)
     /// - `0xA3` (6 bytes):       move on board    → two `squareSensed` events; dedup
-    /// - `0x33`, `0xB8`, `0xBB`, acks, `0xB2`, `0x97`, other:  → `raw(data)`
+    /// - `0x97` (2 bytes):          board promotion pick   → `promotionPick(piece:)`; malformed → `raw(data)`
+    /// - `0x33`, `0xB8`, `0xBB`, acks, `0xB2`, other:   → `raw(data)`
     /// - Unknown leading byte:   skip one byte and rescan (primary's resync strategy)
     public mutating func feed(bytes: Data) -> [BoardEvent] {
         buffer.append(contentsOf: bytes)
@@ -587,6 +587,21 @@ public struct ChessUpAdapter: BoardAdapter {
         Data([0x97, piece])
     }
 
+    /// Decode a board-side `0x97` promotion-pick byte to a `PieceType`.
+    ///
+    /// Board piece scale: 1=Rook, 2=Knight, 3=Bishop, 4=Queen.
+    /// Returns `nil` for any byte outside 1–4 (malformed or unknown piece).
+    /// [FACTS-ONLY: bluecheese 0x97 promotion scale; see D2]
+    static func decodeBoardPromotionPiece(_ byte: UInt8) -> PieceType? {
+        switch byte {
+        case 1: return .rook
+        case 2: return .knight
+        case 3: return .bishop
+        case 4: return .queen
+        default: return nil
+        }
+    }
+
     /// Enable the raw occupancy stream (`0xFD 0xFD` notifications).
     ///
     /// After sending, the board streams 10-byte `0xFD 0xFD + 8bytes` frames on
@@ -680,11 +695,18 @@ public struct ChessUpAdapter: BoardAdapter {
             // [PRIMARY+FACTS-ONLY: chessup-pc (manufacturer tool) confirms presence.]
             return [.raw(Data(frame))]
         case 0x97:
-            // Board-side promotion pick: [97, piece 1..4]. Host MUST ack with 0x23
-            // or the board retransmits. Queue the ack here (drained by the transport
-            // via takePendingResponses); still forwarded as .raw because BoardEvent
-            // has no typed promotion case yet. [FACTS-ONLY: bluecheese; see D2.]
+            // Board-side promotion pick: [97, piece 1..4] (1=R, 2=N, 3=B, 4=Q).
+            // Host MUST ack with 0x23 or the board retransmits. Queue the ack here
+            // (drained by the transport via takePendingResponses). [FACTS-ONLY: bluecheese; see D2.]
+            //
+            // Decoded as .promotionPick so the session can auto-resolve the picker
+            // without asking the human — the board already answered the question.
             pendingResponses.append(Self.ackBoardPromotionData())
+            if frame.count == 2, let piece = Self.decodeBoardPromotionPiece(frame[1]) {
+                return [.promotionPick(piece: piece)]
+            }
+            // Malformed or unrecognised piece byte — fall back to .raw so the
+            // transport can log it. The 0x23 ack is still queued regardless.
             return [.raw(Data(frame))]
         case 0xBD:
             // Undo/takeback performed on board. [FACTS-ONLY: bluecheese]

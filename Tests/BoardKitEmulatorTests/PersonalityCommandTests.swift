@@ -638,5 +638,118 @@ import BoardKitEmulator
     // Use occupancySnapshot to avoid triggering new A3 assembly.
     let afterAckFrames = personality.frames(for: .occupancySnapshot([Bool](repeating: false, count: 64)))
     #expect(!afterAckFrames.contains { $0.data.first == 0xA3 },
-            "No A3 retransmit after 0x21 ack — pendingUnackedMove must be cleared")}
+            "No A3 retransmit after 0x21 ack — pendingUnackedMove must be cleared")
+}
+
+// MARK: - ChessUp board-side promotion (0x97) emission and round-trip
+
+/// In phoneOTB mode (mode 5) a promotion move must emit 0xA3 followed
+/// immediately by a 0x97 promotion-pick frame.  The host adapter decodes
+/// the 0x97 as `.promotionPick(piece:)`.  The personality holds the 0x97
+/// in `pendingUnackedPromotion` and retransmits it until the host sends 0x23.
+@Test func chessUpPromotionMoveEmitsA3ThenPromo97() {
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    // Play a pawn promotion: lift from b2, place on a1 as a bishop.
+    // The piece parameter carries the promotion result (bishop).
+    _ = personality.frames(for: .squareSensed(square: "b2", isLift: true,  piece: nil))
+    let placeFrames = personality.frames(for: .squareSensed(
+        square: "a1", isLift: false,
+        piece: Piece(type: .bishop, color: .white)
+    ))
+
+    // Both 0xA3 (move) and 0x97 (promotion pick) must be in the output.
+    let a3s = placeFrames.filter { $0.data.first == 0xA3 && $0.data.count == 6 }
+    let promos = placeFrames.filter { $0.data.first == 0x97 && $0.data.count == 2 }
+    #expect(a3s.count == 1,   "Exactly one 0xA3 frame for the promotion move")
+    #expect(promos.count == 1, "Exactly one 0x97 promotion frame alongside 0xA3")
+
+    // 0xA3 must appear before 0x97 in the output.
+    if let a3Idx  = placeFrames.firstIndex(where: { $0.data.first == 0xA3 }),
+       let promIdx = placeFrames.firstIndex(where: { $0.data.first == 0x97 }) {
+        #expect(a3Idx < promIdx, "0xA3 must precede 0x97 in the frame output")
+    }
+
+    // 0x97 piece byte must be 3 (bishop wire code).
+    let promoBytes = [UInt8](promos[0].data)
+    #expect(promoBytes[1] == 3, "Bishop promotion must carry wire byte 3")
+
+    // ── Round-trip: host ChessUpAdapter decodes 0x97 as .promotionPick(.bishop) ──
+    var hostAdapter = ChessUpAdapter()
+    // Feed the A3 first (deduplication guard needs the move frame first).
+    _ = hostAdapter.feed(bytes: a3s[0].data)
+    _ = hostAdapter.takePendingResponses()   // drain A3 ack
+    // Feed the 0x97.
+    let promoEvents = hostAdapter.feed(bytes: promos[0].data)
+    guard case .promotionPick(let decodedPiece) = promoEvents.first else {
+        Issue.record("Host must decode 0x97 byte=3 as .promotionPick(.bishop)")
+        return
+    }
+    #expect(decodedPiece == .bishop, "Host decoded piece must be .bishop")
+    // Host queues 0x23 ack.
+    let promoAcks = hostAdapter.takePendingResponses()
+    #expect(promoAcks == [ChessUpAdapter.ackBoardPromotionData()],
+            "Host must queue 0x23 after receiving 0x97")
+}
+
+/// The 0x97 promotion frame is retransmitted alongside subsequent notifications
+/// until the host sends 0x23.
+@Test func chessUpPromo97RetransmitClearedBy0x23() {
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    // Play a promotion move (queen).
+    _ = personality.frames(for: .squareSensed(square: "e7", isLift: true, piece: nil))
+    _ = personality.frames(for: .squareSensed(
+        square: "e8", isLift: false,
+        piece: Piece(type: .queen, color: .white)
+    ))
+
+    // Next event before 0x21/0x23: both A3 and promo retransmits must fire.
+    let nextFrames = personality.frames(for: .squareSensed(square: "a2", isLift: true, piece: nil))
+    let a3Retransmits    = nextFrames.filter { $0.data.first == 0xA3 }
+    let promoRetransmits = nextFrames.filter { $0.data.first == 0x97 }
+    #expect(a3Retransmits.count == 1,    "A3 retransmit before ack")
+    #expect(promoRetransmits.count == 1, "0x97 retransmit before 0x23")
+    // Queen promotion wire byte is 4.
+    if let promoBytes = promoRetransmits.first.map({ [UInt8]($0.data) }) {
+        #expect(promoBytes[1] == 4, "Queen promotion must carry wire byte 4")
+    }
+
+    // Ack 0x21 (move ack) — clears A3 retransmit only.
+    _ = personality.handleHostWrite(Data([0x21]))
+    let afterA3Ack = personality.frames(for: .occupancySnapshot([Bool](repeating: false, count: 64)))
+    #expect(!afterA3Ack.contains { $0.data.first == 0xA3 }, "No A3 after 0x21 ack")
+    // 0x97 retransmit must still fire (0x23 not yet sent).
+    #expect(afterA3Ack.contains { $0.data.first == 0x97 }, "0x97 still retransmits before 0x23")
+
+    // Ack 0x23 (promotion ack) — clears promotion retransmit.
+    let ackActions = personality.handleHostWrite(Data([0x23]))
+    let hasLog = ackActions.contains { if case .log = $0 { return true }; return false }
+    #expect(hasLog, "0x23 must produce at least one .log action")
+
+    let afterPromoAck = personality.frames(for: .occupancySnapshot([Bool](repeating: false, count: 64)))
+    #expect(!afterPromoAck.contains { $0.data.first == 0x97 },
+            "No 0x97 retransmit after 0x23 ack — pendingUnackedPromotion must be cleared")
+}
+
+/// Non-promotion moves (normal pawn push, piece moves) must NOT emit 0x97.
+@Test func chessUpNonPromotionMoveDoesNotEmit97() {
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    // Normal pawn push e2→e4 (piece is nil — occupancy-only path).
+    _ = personality.frames(for: .squareSensed(square: "e2", isLift: true,  piece: nil))
+    let placeFrames = personality.frames(for: .squareSensed(square: "e4", isLift: false, piece: nil))
+    #expect(!placeFrames.contains { $0.data.first == 0x97 },
+            "Normal move must not emit 0x97 promotion frame")
+
+    // Pawn move with piece=pawn (not a promotion — still on rank 3).
+    let pawnPiece = Piece(type: .pawn, color: .white)
+    _ = personality.frames(for: .squareSensed(square: "d2", isLift: true,  piece: nil))
+    let pawnPlaceFrames = personality.frames(for: .squareSensed(square: "d4", isLift: false, piece: pawnPiece))
+    #expect(!pawnPlaceFrames.contains { $0.data.first == 0x97 },
+            "Pawn piece (not promoted) must not emit 0x97")
+}
 

@@ -78,7 +78,7 @@ public struct PegasusPersonality: BoardPersonality {
                               0, 0, 0, 0, 0, 0, 0, 0])
             return [PersonalityFrame(characteristicUUID: Self.notifyCharUUID, data: frame)]
 
-        case .ready, .connected, .disconnected, .raw:
+        case .ready, .connected, .disconnected, .raw, .promotionPick:
             return []
         }
     }

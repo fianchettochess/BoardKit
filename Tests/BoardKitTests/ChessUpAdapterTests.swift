@@ -435,15 +435,54 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
 
 @Test func f9BoardSidePromotionDecode() throws {
     // Board-side player picks knight: B→H [97, 02]. Host MUST ack [23].
-    // Forwarded as raw (session handles promotion UI).
+    // Decoded as .promotionPick(.knight) so the session can auto-resolve the picker.
     let frame = Data([0x97, 0x02])
     var adapter = ChessUpAdapter()
     let events = adapter.feed(bytes: frame)
     #expect(events.count == 1)
-    guard case .raw(let d) = events[0] else {
-        Issue.record("Board-side promotion [97] should forward as .raw"); return
+    guard case .promotionPick(let piece) = events[0] else {
+        Issue.record("Board-side promotion [97 02] should decode as .promotionPick(.knight)"); return
     }
-    #expect(d == frame)
+    #expect(piece == .knight)
+}
+
+@Test func f9BoardSidePromotionDecodeAllPieces() {
+    // Board scale: 1=Rook, 2=Knight, 3=Bishop, 4=Queen.
+    let cases: [(UInt8, PieceType)] = [(1, .rook), (2, .knight), (3, .bishop), (4, .queen)]
+    for (byte, expected) in cases {
+        var adapter = ChessUpAdapter()
+        let events = adapter.feed(bytes: Data([0x97, byte]))
+        guard case .promotionPick(let piece) = events.first else {
+            Issue.record("0x97 byte=\(byte) should decode as .promotionPick"); continue
+        }
+        #expect(piece == expected, "byte \(byte) should map to \(expected)")
+    }
+}
+
+@Test func f9BoardSidePromotionMalformedByteForwardsAsRaw() {
+    // A 0x97 frame with an out-of-range piece byte (0, 5, 255) must fall back to .raw.
+    for bad: UInt8 in [0, 5, 255] {
+        var adapter = ChessUpAdapter()
+        let events = adapter.feed(bytes: Data([0x97, bad]))
+        guard case .raw = events.first else {
+            Issue.record("0x97 byte=\(bad) (out of range) should forward as .raw"); continue
+        }
+    }
+}
+
+@Test func f9BoardSidePromotionAckStillQueued() {
+    // The 0x23 ack MUST be queued even when the piece byte is valid.
+    var adapter = ChessUpAdapter()
+    _ = adapter.feed(bytes: Data([0x97, 0x04])) // promote to queen
+    #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackBoardPromotionData()])
+}
+
+@Test func f9BoardSidePromotionAckQueuedEvenWhenMalformed() {
+    // The 0x23 ack MUST also be queued for malformed promotion frames —
+    // the board retransmits 0x97 regardless; we must silence it.
+    var adapter = ChessUpAdapter()
+    _ = adapter.feed(bytes: Data([0x97, 0x00])) // malformed byte
+    #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackBoardPromotionData()])
 }
 
 @Test func f9PromotionAckEncode() {
@@ -868,8 +907,13 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
 
 @Test func boardPromotionQueuesPromotionAck() {
     var adapter = ChessUpAdapter()
-    // 0x97 board-side promotion pick must queue the 0x23 ack.
-    _ = adapter.feed(bytes: Data([0x97, 0x04])) // promote to queen
+    // 0x97 board-side promotion pick must queue the 0x23 ack (queen = byte 4).
+    let events = adapter.feed(bytes: Data([0x97, 0x04])) // promote to queen
+    // Emits .promotionPick(.queen), not .raw.
+    guard case .promotionPick(let piece) = events.first else {
+        Issue.record("0x97 byte=4 must decode as .promotionPick(.queen)"); return
+    }
+    #expect(piece == .queen)
     #expect(adapter.takePendingResponses() == [ChessUpAdapter.ackBoardPromotionData()])
 }
 

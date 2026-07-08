@@ -122,8 +122,9 @@ public struct ChessnutPersonality: BoardPersonality {
         case .battery(let percent):
             return [batteryFrame(percent: percent, charging: isCharging)]
 
-        case .ready, .connected, .disconnected, .raw:
+        case .ready, .connected, .disconnected, .raw, .promotionPick:
             // Chessnut readiness is implicit in the first streamed frame.
+            // .promotionPick is ChessUp-specific; Chessnut uses identity snapshots.
             return []
         }
     }

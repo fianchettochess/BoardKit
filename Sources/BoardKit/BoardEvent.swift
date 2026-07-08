@@ -112,4 +112,23 @@ public enum BoardEvent: Sendable {
     /// it for any opcode they do not recognise so callers can log unknown
     /// frames without losing data.
     case raw(Data)
+
+    // MARK: - Hardware-reported picks
+
+    /// Board-reported promotion piece pick.
+    ///
+    /// Emitted by the `ChessUpAdapter` when the board sends a `0x97` frame
+    /// (board-side promotion frame, piece scale 1=R 2=N 3=B 4=Q).
+    ///
+    /// When the board reports the promotion piece this way, the session layer
+    /// can auto-resolve the picker without asking the human — the board already
+    /// answered the question.  The adapter always queues the required `0x23` ack
+    /// via `takePendingResponses()` regardless of whether the frame decodes
+    /// successfully; this event carries the decoded type.
+    ///
+    /// `PieceType` is used directly because `BoardEvent` already imports
+    /// `ChessCore` (for `Piece`) and `PieceType` satisfies the `Sendable`
+    /// requirement via its value-type nature.  Session code MUST handle this
+    /// case and MUST NOT treat it the same as `.raw`.
+    case promotionPick(piece: PieceType)
 }

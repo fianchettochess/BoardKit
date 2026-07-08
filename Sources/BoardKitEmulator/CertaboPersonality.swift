@@ -112,7 +112,7 @@ public struct CertaboPersonality: BoardPersonality {
             let frame = positionFrame()
             return [frame, frame]
 
-        case .ready, .battery, .connected, .disconnected, .raw:
+        case .ready, .battery, .connected, .disconnected, .raw, .promotionPick:
             return []
         }
     }

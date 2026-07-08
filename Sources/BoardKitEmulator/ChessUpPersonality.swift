@@ -133,9 +133,9 @@ public struct ChessUpPersonality: BoardPersonality {
 
     public mutating func frames(for event: BoardEvent) -> [PersonalityFrame] {
         switch event {
-        case .squareSensed(let square, let isLift, _):
+        case .squareSensed(let square, let isLift, let piece):
             if let fm = Self.fileMajorIndex(square) { occupancy[fm] = !isLift }
-            return squareSensedFrames(square: square, isLift: isLift)
+            return squareSensedFrames(square: square, isLift: isLift, piece: piece)
 
         case .occupancySnapshot(let snapshot):
             if snapshot.count == 64 { occupancy = snapshot }
@@ -145,16 +145,26 @@ public struct ChessUpPersonality: BoardPersonality {
             if identity.count == 64 { occupancy = identity.map { $0 != nil } }
             return pendingRetransmitFrames() + [boardStateFrame()]
 
-        case .ready, .battery, .connected, .disconnected, .raw:
+        case .ready, .battery, .connected, .disconnected, .raw, .promotionPick:
             return []
         }
     }
 
-    /// Handle a single `squareSensed` event: assemble `0xA3` in phoneOTB mode,
-    /// prepend any pending retransmit, and always append the `0x67` board-state frame.
-    private mutating func squareSensedFrames(square: String, isLift: Bool) -> [PersonalityFrame] {
+    /// Handle a single `squareSensed` event: assemble `0xA3` (and `0x97` for
+    /// promotions) in phoneOTB mode, prepend any pending retransmit, and always
+    /// append the `0x67` board-state frame.
+    ///
+    /// - Parameters:
+    ///   - square: Algebraic square string (board's physical frame).
+    ///   - isLift: True for a lift, false for a place.
+    ///   - piece: The piece on the square after the event (non-nil for identity-
+    ///     sensing boards or when the driver knows the promotion piece). Used to
+    ///     detect promotion moves: when a non-pawn piece is placed on a back rank
+    ///     in phoneOTB mode a `0x97` promotion-pick frame is also emitted.
+    private mutating func squareSensedFrames(square: String, isLift: Bool, piece: Piece?) -> [PersonalityFrame] {
         // ── Phase 1: 0xA3 move assembly (mode 5 only) ────────────────────────
         var newA3: PersonalityFrame? = nil
+        var newPromo: PersonalityFrame? = nil
         if sessionMode == 5 {
             if isLift {
                 // First lift in the move → record as the "from" square.
@@ -169,6 +179,22 @@ public struct ChessUpPersonality: BoardPersonality {
                         newA3 = PersonalityFrame(characteristicUUID: Self.notifyCharUUID,
                                                  data: Data(a3Bytes))
                     }
+                    // Promotion detection: a non-pawn piece placed on a back rank
+                    // (rank 0-indexed 0 or 7) means the player promoted a pawn.
+                    // The driver passes the resulting piece in the `piece` parameter
+                    // (e.g. Piece(type: .bishop, color: .white) for a bishop promo).
+                    // Emit the 0x97 board-side promotion frame and hold it for
+                    // retransmit until the host acks with 0x23.
+                    if let placedPiece = piece,
+                       placedPiece.type != .pawn,
+                       let toSq = Square(algebraic: square),
+                       (toSq.rank == 0 || toSq.rank == 7),
+                       let promoCode = Self.promotionCode(for: placedPiece.type) {
+                        let promoBytes: [UInt8] = [0x97, promoCode]
+                        pendingUnackedPromotion = promoBytes
+                        newPromo = PersonalityFrame(characteristicUUID: Self.notifyCharUUID,
+                                                    data: Data(promoBytes))
+                    }
                     pendingMoveFrom = nil
                 }
             }
@@ -178,20 +204,38 @@ public struct ChessUpPersonality: BoardPersonality {
         var output: [PersonalityFrame] = []
 
         // Prepend retransmit(s) of pending unacked frames UNLESS this call just
-        // emitted a fresh 0xA3 (newA3 != nil).  On the first emission the fresh
-        // A3 is already in `output`; retransmit fires on the NEXT call and every
-        // subsequent call until `0x21` arrives.
-        if newA3 == nil {
+        // emitted fresh frames (newA3 or newPromo).  On the first emission the
+        // fresh frames are already in `output`; retransmits fire on the NEXT call
+        // and every subsequent call until the host acks (0x21 / 0x23).
+        if newA3 == nil && newPromo == nil {
             output.append(contentsOf: pendingRetransmitFrames())
         }
 
         // Fresh 0xA3 frame (if assembled above).
         if let a3 = newA3 { output.append(a3) }
 
+        // Fresh 0x97 promotion frame (if detected above), immediately following 0xA3.
+        if let promo = newPromo { output.append(promo) }
+
         // 0x67 board-state snapshot — always emitted so occupancy-only adapters
         // remain in sync regardless of session mode.
         output.append(boardStateFrame())
         return output
+    }
+
+    /// Map a `PieceType` to the ChessUp `0x97` wire-scale promotion byte.
+    ///
+    /// Board scale (both sources agree): 1=Rook, 2=Knight, 3=Bishop, 4=Queen.
+    /// Returns `nil` for piece types that cannot be promotion targets (king, pawn).
+    /// [FACTS-ONLY: bluecheese 0x97 promotion scale; see D2]
+    private static func promotionCode(for pieceType: PieceType) -> UInt8? {
+        switch pieceType {
+        case .rook:   return 1
+        case .knight: return 2
+        case .bishop: return 3
+        case .queen:  return 4
+        default:      return nil
+        }
     }
 
     /// Returns notification frames for all pending unacked board messages

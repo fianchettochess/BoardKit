@@ -99,8 +99,9 @@ public struct SquareOffPersonality: BoardPersonality {
             // The "14#GO*" new-game ACK — also sent in response to "14#1*".
             return [txFrame(SquareOffMessage(code: "14", body: "GO"))]
 
-        case .battery, .connected, .disconnected, .raw:
+        case .battery, .connected, .disconnected, .raw, .promotionPick:
             // Square Off reports no battery; lifecycle is radio-level.
+            // .promotionPick is a ChessUp-specific event; Square Off never emits it.
             return []
         }
     }
