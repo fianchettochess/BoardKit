@@ -13,6 +13,7 @@ import MillenniumAdapter
 import CertaboAdapter
 import ChessUpAdapter
 import BoardKitEmulator
+import BoardKitTestSupport
 
 // MARK: - Square Off host commands
 
@@ -751,5 +752,159 @@ import BoardKitEmulator
     let pawnPlaceFrames = personality.frames(for: .squareSensed(square: "d4", isLift: false, piece: pawnPiece))
     #expect(!pawnPlaceFrames.contains { $0.data.first == 0x97 },
             "Pawn piece (not promoted) must not emit 0x97")
+}
+
+// MARK: - Driver-path promotion tests (SimulatedBoard.executeMove → personality)
+//
+// These tests exercise the REAL driver path and close the modeling gap proven
+// by the live end-to-end test: b2a1b produced only 0xA3+0x21, no 0x97.
+//
+// Root causes:
+// (a) SimulatedBoard.physicalEvents: capture branch placed moverPiece=pawn
+//     instead of promoted piece, and never emitted .promotionPick.
+// (b) ChessUpPersonality.frames(for:): .promotionPick was a no-op.
+// (c) GameDriver.execute: .promotionPick was never forwarded to the personality.
+
+/// Plain (non-capture) promotion through the DRIVER path:
+/// SimulatedBoard on an occupancy-only board must emit .promotionPick which
+/// the personality converts to 0x97 in phoneOTB mode.
+@Test func driverPathPlainPromotionEmits0x97() async throws {
+    let sim = SimulatedBoard(
+        position: Position(fen: "8/4P3/8/8/8/8/8/4K2k w - - 0 1")!,
+        capabilities: [.occupancySensing]  // ChessUp has no .pieceIdentity
+    )
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    let events = try await sim.executeMove(uci: "e7e8q")
+    // events: [squareSensed(e7,lift,nil), squareSensed(e8,place,nil), promotionPick(.queen)]
+
+    var allFrames: [PersonalityFrame] = []
+    for event in events {
+        allFrames += personality.frames(for: event)
+    }
+
+    let a3Frames  = allFrames.filter { $0.data.first == 0xA3 && $0.data.count == 6 }
+    let x97Frames = allFrames.filter { $0.data.first == 0x97 && $0.data.count == 2 }
+    #expect(a3Frames.count == 1,  "Driver path: plain promotion must emit exactly one 0xA3")
+    #expect(x97Frames.count == 1, "Driver path: plain promotion must emit exactly one 0x97")
+
+    // Queen = wire code 4.
+    let promoBytes = [UInt8](x97Frames[0].data)
+    #expect(promoBytes[1] == 4, "Queen promotion driver path: wire code must be 4")
+
+    // 0xA3 must appear before 0x97.
+    if let a3Idx  = allFrames.firstIndex(where: { $0.data.first == 0xA3 }),
+       let promIdx = allFrames.firstIndex(where: { $0.data.first == 0x97 }) {
+        #expect(a3Idx < promIdx, "0xA3 must precede 0x97 in the frame output")
+    }
+}
+
+/// CAPTURE-promotion through the DRIVER path — this was the exact failing
+/// scenario: playing a capture-promotion produced only 0xA3+0x21, no 0x97
+/// (fallback picker appeared).
+///
+/// Fixes verified: SimulatedBoard capture branch now handles promotion (places
+/// promoted piece for identity boards + emits .promotionPick); personality
+/// handles .promotionPick; GameDriver forwards knowledge events.
+@Test func driverPathCapturePromotionEmits0x97() async throws {
+    // White pawn b7 captures black rook a8 and promotes to bishop (b7a8b).
+    // (White pawns promote on rank 8, not rank 1.)
+    let sim = SimulatedBoard(
+        position: Position(fen: "r7/1P6/8/8/8/8/8/4K2k w - - 0 1")!,
+        capabilities: [.occupancySensing]
+    )
+    var personality = ChessUpPersonality()
+    _ = personality.handleHostWrite(ChessUpAdapter.collectionSessionData())  // mode 5
+
+    let events = try await sim.executeMove(uci: "b7a8b")
+    // events: [squareSensed(b7,lift,nil), squareSensed(a8,lift,nil),
+    //          squareSensed(a8,place,nil), promotionPick(.bishop)]
+
+    var allFrames: [PersonalityFrame] = []
+    for event in events {
+        allFrames += personality.frames(for: event)
+    }
+
+    let a3Frames  = allFrames.filter { $0.data.first == 0xA3 && $0.data.count == 6 }
+    let x97Frames = allFrames.filter { $0.data.first == 0x97 && $0.data.count == 2 }
+    #expect(a3Frames.count == 1,
+            "Capture-promotion driver path: must emit 0xA3 (the proven-missing frame)")
+    #expect(x97Frames.count == 1,
+            "Capture-promotion driver path: must emit 0x97 (was the verified bug)")
+
+    // Bishop = wire code 3.
+    let promoBytes = [UInt8](x97Frames[0].data)
+    #expect(promoBytes[1] == 3,
+            "b7a8b bishop promotion: wire code must be 3")
+
+    // ── Adapter round-trip: 0x97 → .promotionPick(.bishop) + queues 0x23 ──────
+    var hostAdapter = ChessUpAdapter()
+    _ = hostAdapter.feed(bytes: a3Frames[0].data)
+    _ = hostAdapter.takePendingResponses()  // drain 0x21 ack
+    let promoEvents = hostAdapter.feed(bytes: x97Frames[0].data)
+    guard case .promotionPick(let piece) = promoEvents.first else {
+        Issue.record("Host adapter must decode 0x97 byte=3 as .promotionPick(.bishop)")
+        return
+    }
+    #expect(piece == .bishop, "Round-trip: decoded piece must be .bishop")
+    #expect(hostAdapter.takePendingResponses() == [ChessUpAdapter.ackBoardPromotionData()],
+            "Host adapter must queue 0x23 ack for the 0x97")
+}
+
+/// .promotionPick must be suppressed (no 0x97) in non-phoneOTB modes.
+@Test func driverPathPromotionInNonPhoneOTBModeNoPromo97() async throws {
+    // nil mode: no 0xB9 received.
+    let simNil = SimulatedBoard(
+        position: Position(fen: "8/4P3/8/8/8/8/8/4K2k w - - 0 1")!,
+        capabilities: [.occupancySensing]
+    )
+    var pNil = ChessUpPersonality()
+    var framesNil: [PersonalityFrame] = []
+    for event in try await simNil.executeMove(uci: "e7e8q") {
+        framesNil += pNil.frames(for: event)
+    }
+    #expect(!framesNil.contains { $0.data.first == 0x97 },
+            "No 0x97 without a 0xB9 (nil session mode)")
+
+    // builtInAI mode 6.
+    let sim6 = SimulatedBoard(
+        position: Position(fen: "8/4P3/8/8/8/8/8/4K2k w - - 0 1")!,
+        capabilities: [.occupancySensing]
+    )
+    var p6 = ChessUpPersonality()
+    _ = p6.handleHostWrite(ChessUpAdapter.gameSettingsData(
+        mode: 6, whiteType: 0, whiteLevel: 1, whiteLock: 0,
+        blackType: 0, blackLevel: 1, blackLock: 0,
+        hintLimit: 0, whiteRemote: 0, blackRemote: 0, deviceUser: 0))
+    var framesP6: [PersonalityFrame] = []
+    for event in try await sim6.executeMove(uci: "e7e8q") {
+        framesP6 += p6.frames(for: event)
+    }
+    #expect(!framesP6.contains { $0.data.first == 0x97 },
+            "No 0x97 in builtInAI mode 6")
+}
+
+/// initialSessionMode: 5 in EmulatorOptions.makePersonality() means the dry-run
+/// emulator has the 0xA3/0x97 gate open without a real host handshake.
+@Test func chessUpInitialSessionModePreset() {
+    // Default init: nil (gate closed until real 0xB9 arrives).
+    let defaultPersonality = ChessUpPersonality()
+    #expect(defaultPersonality.sessionModeForTesting == nil,
+            "Default init must have nil session mode")
+
+    // Emulator init: mode 5 (gate open for dry-run / live emulation).
+    let emulatorPersonality = ChessUpPersonality(initialSessionMode: 5)
+    #expect(emulatorPersonality.sessionModeForTesting == 5,
+            "initialSessionMode:5 must pre-set phoneOTB mode")
+
+    // A host 0xB9 can still override the initial mode.
+    var overridable = ChessUpPersonality(initialSessionMode: 5)
+    _ = overridable.handleHostWrite(ChessUpAdapter.gameSettingsData(
+        mode: 6, whiteType: 0, whiteLevel: 1, whiteLock: 0,
+        blackType: 0, blackLevel: 1, blackLock: 0,
+        hintLimit: 0, whiteRemote: 0, blackRemote: 0, deviceUser: 0))
+    #expect(overridable.sessionModeForTesting == 6,
+            "Host 0xB9 mode 6 must override the initial mode 5")
 }
 

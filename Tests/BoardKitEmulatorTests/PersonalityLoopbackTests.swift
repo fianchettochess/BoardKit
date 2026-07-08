@@ -180,6 +180,7 @@ private let loopbackMoves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1
                 decoded += sensedTuples(hostAdapter.feed(bytes: frame.data))
             }
         }
+        // groundTruth has 3 squareSensed events (en-passant) — no .promotionPick.
         let truth = sensedTuples(groundTruth)
         #expect(decoded.count == truth.count)
         for (decodedEvent, truthEvent) in zip(decoded, truth) {
@@ -189,7 +190,9 @@ private let loopbackMoves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1
         }
     }
 
-    // Promotion (the placed piece must decode as a queen, not a pawn).
+    // Plain promotion (the placed piece must decode as a queen, not a pawn).
+    // After the fix, groundTruth has a trailing .promotionPick(.queen) that
+    // ChessnutPersonality ignores (returns []) — decoded.count stays 2.
     do {
         let sim = SimulatedBoard(position: Position(fen: "8/4P3/8/8/8/8/8/4K2k w - - 0 1")!,
                                  capabilities: [.occupancySensing, .pieceIdentity])
@@ -207,10 +210,55 @@ private let loopbackMoves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1
                 decoded += sensedTuples(hostAdapter.feed(bytes: frame.data))
             }
         }
+        // 2 squareSensed events: lift(e7) + place(e8, queen).
+        // .promotionPick is in groundTruth but Chessnut returns [] for it.
         #expect(decoded.count == 2)
         #expect(decoded[1].square == "e8")
         #expect(decoded[1].piece == Piece(type: .queen, color: .white))
     }
+}
+
+/// Capture-promotion identity check: for identity-sensing boards, the PLACE
+/// event of a capture-promotion must carry the PROMOTED piece, not the pawn.
+///
+/// This was the bug that the fix closes: SimulatedBoard's capture branch
+/// always placed `moverPiece` (the pawn) regardless of promotion.  After the
+/// fix, the capture branch handles promotion correctly and the Chessnut adapter
+/// decodes the promoted piece from the board-state frame.
+@Test func chessnutLoopbackCapturePromotionPlacedPieceIsPromoted() async throws {
+    // White pawn b7 captures black rook a8 and promotes to queen (b7a8q).
+    // (White pawns promote on rank 8, not rank 1.)
+    let sim = SimulatedBoard(
+        position: Position(fen: "r7/1P6/8/8/8/8/8/4K2k w - - 0 1")!,
+        capabilities: [.occupancySensing, .pieceIdentity]
+    )
+    var personality = ChessnutPersonality()
+    var hostAdapter = ChessnutAdapter()
+    let snapshot = await sim.boardSnapshot()
+    for frame in personality.frames(for: snapshot) {
+        _ = hostAdapter.feed(bytes: frame.data)
+    }
+
+    let groundTruth = try await sim.executeMove(uci: "b7a8q")
+    var decoded: [(square: String, isLift: Bool, piece: Piece?)] = []
+    for event in groundTruth {
+        for frame in personality.frames(for: event) {
+            decoded += sensedTuples(hostAdapter.feed(bytes: frame.data))
+        }
+    }
+    // Capture-promotion: lift(b7, pawn) + lift(a8, rook) + place(a8, queen).
+    // .promotionPick(.queen) produces no Chessnut frames → not in decoded.
+    #expect(decoded.count == 3,
+            "Capture-promotion: must have 3 squareSensed events (lift×2 + place)")
+    #expect(decoded[0].square == "b7" && decoded[0].isLift,
+            "First event: lift pawn from b7")
+    #expect(decoded[1].square == "a8" && decoded[1].isLift,
+            "Second event: lift captured rook from a8")
+    #expect(decoded[2].square == "a8" && !decoded[2].isLift,
+            "Third event: place promoted piece on a8")
+    // The placed piece MUST be the queen (promoted), NOT the pawn (the old bug).
+    #expect(decoded[2].piece == Piece(type: .queen, color: .white),
+            "Capture-promotion placed piece must be the promoted queen, not the pawn (fixed bug)")
 }
 
 // MARK: - Pegasus loop-back

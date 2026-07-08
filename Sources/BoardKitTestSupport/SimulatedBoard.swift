@@ -16,13 +16,25 @@ import BoardKit
 ///
 /// ### Move type → event sequence
 ///
-/// | Move type           | Events emitted (in order)                               |
-/// |---------------------|---------------------------------------------------------|
-/// | Simple (e2e4)       | lift(e2, piece), place(e4, piece)                       |
-/// | Normal capture      | lift(from, mover), lift(to, captured), place(to, mover) |
-/// | En-passant (e5d6)   | lift(e5, pawn), lift(d5, captured), place(d6, pawn)     |
-/// | Castling (e1g1)     | lift(e1, K), lift(h1, R), place(f1, R), place(g1, K)    |
-/// | Promotion (e7e8q)   | lift(e7, pawn), place(e8, queen)                        |
+/// | Move type              | Events emitted (in order)                                           |
+/// |------------------------|---------------------------------------------------------------------|
+/// | Simple (e2e4)          | lift(e2, piece), place(e4, piece)                                   |
+/// | Normal capture         | lift(from, mover), lift(to, captured), place(to, mover)             |
+/// | En-passant (e5d6)      | lift(e5, pawn), lift(d5, captured), place(d6, pawn)                 |
+/// | Castling (e1g1)        | lift(e1, K), lift(h1, R), place(f1, R), place(g1, K)               |
+/// | Promotion (e7e8q)      | lift(e7, pawn), place(e8, queen), promotionPick(.queen)             |
+/// | Capture-promotion      | lift(from, pawn), lift(to, captured), place(to, promoted),         |
+/// |   (b2a1b)              |   promotionPick(.bishop)                                            |
+///
+/// For identity-sensing boards (`.pieceIdentity` capability) the `piece`
+/// field in the PLACE event of a promotion or capture-promotion carries the
+/// **promoted piece**, not the pawn — mirroring the physical reality where
+/// the player places the spare promoted piece on the board.
+///
+/// A trailing `.promotionPick(piece:)` event is appended for ALL promotions
+/// (plain and capture-promotion) regardless of capability level.  It is the
+/// game-knowledge channel: the real ChessUp board communicates the promotion
+/// choice via `0x97` independently of piece-identity sensing.
 ///
 /// Castling emits rook-place before king-place (matches how a human
 /// typically moves the rook first on a physical board in a king-first
@@ -149,19 +161,32 @@ public actor SimulatedBoard {
             return events
         }
 
-        // Normal capture: attacker lifts, captured piece lifts, attacker places.
+        // Normal capture (possibly a capture-promotion): attacker lifts,
+        // captured piece lifts, attacker places.
+        // For capture-promotions on an identity board, the placed piece is the
+        // PROMOTED piece (physical reality: the player places the spare promoted
+        // piece, not the pawn).  A trailing .promotionPick event is also emitted
+        // so the game-knowledge channel reaches the personality regardless of
+        // whether the board has piece-identity sensing.
         if move.capturedPiece != nil {
             let capturedPiece: Piece? = withPiece ? position[move.to] : nil
+            let placePiece: Piece?
+            if withPiece, let promo = move.promotion, let color = moverPiece?.color {
+                placePiece = Piece(type: promo, color: color)
+            } else {
+                placePiece = moverPiece
+            }
             events.append(.squareSensed(square: fromSq, isLift: true,  piece: moverPiece))
             events.append(.squareSensed(square: toSq,   isLift: true,  piece: capturedPiece))
-            events.append(.squareSensed(square: toSq,   isLift: false, piece: moverPiece))
+            events.append(.squareSensed(square: toSq,   isLift: false, piece: placePiece))
+            if let promo = move.promotion { events.append(.promotionPick(piece: promo)) }
             return events
         }
 
-        // Simple move (including promotion — the piece swap happens out-of-band
-        // and is not modelled here; the physical lift/place is the same).
-        // When this is a promotion, the placed piece is the promoted type in
-        // the mover's colour.
+        // Simple move.  For a non-capture promotion the placed piece is the
+        // promoted type in the mover's colour (identity boards need the real
+        // piece; occupancy-only boards carry nil and the personality learns the
+        // promotion choice from the trailing .promotionPick event instead).
         let placePiece: Piece?
         if withPiece, let promo = move.promotion, let color = moverPiece?.color {
             placePiece = Piece(type: promo, color: color)
@@ -170,6 +195,7 @@ public actor SimulatedBoard {
         }
         events.append(.squareSensed(square: fromSq, isLift: true,  piece: moverPiece))
         events.append(.squareSensed(square: toSq,   isLift: false, piece: placePiece))
+        if let promo = move.promotion { events.append(.promotionPick(piece: promo)) }
         return events
     }
 

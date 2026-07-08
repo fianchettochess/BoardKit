@@ -187,7 +187,12 @@ public struct EmulatorOptions: Sendable, Equatable {
         case .certabo:
             return CertaboPersonality(advertisedName: advertisedName ?? "Certabo")
         case .chessup:
-            return ChessUpPersonality(advertisedName: advertisedName ?? "ChessUp")
+            // initialSessionMode: 5 (phoneOTB) so the emulator emits 0xA3 / 0x97
+            // without waiting for a real host 0xB9 handshake — the emulator always
+            // operates in game-collection mode.  A host that sends a different 0xB9
+            // will override this via handleHostWrite.
+            return ChessUpPersonality(advertisedName: advertisedName ?? "ChessUp",
+                                      initialSessionMode: 5)
         }
     }
 }

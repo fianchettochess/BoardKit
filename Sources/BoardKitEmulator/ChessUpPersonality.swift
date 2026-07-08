@@ -108,8 +108,18 @@ public struct ChessUpPersonality: BoardPersonality {
 
     public let advertisedName: String
 
-    public init(advertisedName: String = "ChessUp") {
+    /// Create a ChessUp personality.
+    ///
+    /// - Parameters:
+    ///   - advertisedName: BLE advertising name (default `"ChessUp"`).
+    ///   - initialSessionMode: Override the session mode without waiting for a
+    ///     `0xB9` host write.  Pass `5` when using the personality in the
+    ///     emulator (which never receives a real host handshake) so that `0xA3`
+    ///     and `0x97` frames are emitted immediately.  Defaults to `nil`
+    ///     (mode unknown, `0xA3`/`0x97` gate closed until a `0xB9` arrives).
+    public init(advertisedName: String = "ChessUp", initialSessionMode: UInt8? = nil) {
         self.advertisedName = advertisedName
+        self.sessionMode = initialSessionMode
         var occ = [Bool](repeating: false, count: 64)
         for file in 0..<8 {
             for rank in [0, 1, 6, 7] { occ[file * 8 + rank] = true }
@@ -145,7 +155,26 @@ public struct ChessUpPersonality: BoardPersonality {
             if identity.count == 64 { occupancy = identity.map { $0 != nil } }
             return pendingRetransmitFrames() + [boardStateFrame()]
 
-        case .ready, .battery, .connected, .disconnected, .raw, .promotionPick:
+        case .promotionPick(let pieceType):
+            // Game-knowledge channel: the driver explicitly tells the personality
+            // which piece was chosen.  Emit the 0x97 board-side promotion frame in
+            // phoneOTB mode (mode 5) and hold it for retransmit until the host
+            // acks with 0x23.  Other modes: no 0x97 (the board doesn't stream
+            // moves in those modes either).
+            //
+            // This path fires reliably from the driver (SimulatedBoard emits
+            // .promotionPick for every promotion regardless of .pieceIdentity).
+            // The identity-based back-rank detection in squareSensedFrames is kept
+            // as a harmless secondary path for hand-crafted tests that pass a
+            // non-pawn piece directly in the .squareSensed event.
+            guard sessionMode == 5,
+                  let promoCode = Self.promotionCode(for: pieceType) else { return [] }
+            let promoBytes: [UInt8] = [0x97, promoCode]
+            pendingUnackedPromotion = promoBytes
+            return [PersonalityFrame(characteristicUUID: Self.notifyCharUUID,
+                                     data: Data(promoBytes))]
+
+        case .ready, .battery, .connected, .disconnected, .raw:
             return []
         }
     }

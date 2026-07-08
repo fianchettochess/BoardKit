@@ -319,9 +319,22 @@ public actor GameDriver {
             log("SimulatedBoard rejected \(uci)")
             return
         }
-        moveHistory.append((positionBefore: position, cleanEvents: cleanEvents))
 
-        let context = ChaosMoveContext(move: move, positionBefore: position, cleanEvents: cleanEvents)
+        // Split into physical sensor events (.squareSensed) and game-knowledge
+        // events (.promotionPick, etc.).
+        //
+        // Physical events: routed through the chaos engine (models fallible human
+        // piece handling) and stored in moveHistory for takeback.
+        //
+        // Knowledge events: bypass chaos and takeback — they represent protocol-level
+        // game state the board communicates independently of sensor readings.  For
+        // the ChessUp personality, .promotionPick triggers the 0x97 wire frame.
+        let physicalEvents = cleanEvents.filter { if case .squareSensed = $0 { return true }; return false }
+        let knowledgeEvents = cleanEvents.filter { if case .squareSensed = $0 { return false }; return true }
+
+        moveHistory.append((positionBefore: position, cleanEvents: physicalEvents))
+
+        let context = ChaosMoveContext(move: move, positionBefore: position, cleanEvents: physicalEvents)
         let perturbation = chaos.perturb(context, rng: &rng)
         let patterns = perturbation.appliedPatterns.map(\.rawValue).joined(separator: "+")
         log("playing \(uci)\(patterns.isEmpty ? "" : " [chaos: \(patterns)]")")
@@ -333,6 +346,12 @@ public actor GameDriver {
             let frames = personality.frames(
                 for: .squareSensed(square: event.square, isLift: event.isLift, piece: event.piece)
             )
+            if !frames.isEmpty { onFrames?(frames) }
+        }
+
+        // Forward game-knowledge events directly to the personality (no chaos, no pacing).
+        for event in knowledgeEvents {
+            let frames = personality.frames(for: event)
             if !frames.isEmpty { onFrames?(frames) }
         }
 
