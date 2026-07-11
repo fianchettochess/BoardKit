@@ -18,7 +18,22 @@
 // BoardKit depends on ChessCore (permissive MIT floor) and carries the same
 // generous community deployment floor. No SwiftUI, CoreBluetooth, SkipFuse,
 // or Foundation-networking in any library target.
+import Foundation
 import PackageDescription
+
+// Local Fianchetto development keeps ChessCore next to BoardKit, while a
+// standalone/remote BoardKit checkout does not. The old unconditional
+// `../ChessCore` dependency made every remote BoardKit release unusable unless
+// consumers happened to reproduce the author's folder layout. Prefer the
+// sibling only when it actually exists; otherwise resolve the public package.
+let packageDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+let siblingChessCoreManifest = packageDirectory
+    .deletingLastPathComponent()
+    .appendingPathComponent("ChessCore/Package.swift")
+let chessCoreDependency: Package.Dependency = FileManager.default.fileExists(
+    atPath: siblingChessCoreManifest.path
+) ? .package(path: "../ChessCore")
+  : .package(url: "https://github.com/jaredbrewer/ChessCore.git", from: "0.3.0")
 
 let package = Package(
     name: "BoardKit",
@@ -73,9 +88,9 @@ let package = Package(
         .executable(name: "boardkit-emulator", targets: ["BoardKitEmulator"]),
     ],
     dependencies: [
-        // ChessCore is its own repo, sibling of the consumer monorepos.
-        // MIT licensed; no network, no platform-specific dependencies.
-        .package(path: "../ChessCore"),
+        // Local sibling for coordinated development; versioned remote package
+        // for standalone clones and normal SwiftPM consumers.
+        chessCoreDependency,
         // DocC for documentation generation only.
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
     ],

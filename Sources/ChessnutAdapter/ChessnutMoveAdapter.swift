@@ -512,8 +512,10 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     ///
     /// Returns `nil` when:
     /// - `currentIdentity == nil` (no board frame received yet)
-    /// - `uci` cannot be parsed (< 4 chars or non-algebraic squares)
+    /// - `uci` is not an exact 4/5-character UCI move
     /// - No piece occupies the UCI from-square
+    /// - The sensed identity contradicts a special move (missing castle rook,
+    ///   missing en-passant pawn, invalid promotion, or occupied own target)
     ///
     /// [RISK §a]: no ack/completion frame; FEN suppressed during execution.
     /// [RISK §e]: if `currentIdentity` drifted from the physical board,
@@ -541,26 +543,80 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// En passant detection is reliable for a codec: a pawn moving diagonally
     /// to an empty square has no other legal interpretation in standard chess.
     private func applyUCI(_ uci: String, to identity: [Piece?]) -> [Piece?]? {
-        guard uci.count >= 4,
-              let fromSq = Square(algebraic: String(uci.prefix(2))),
-              let toSq   = Square(algebraic: String(uci.dropFirst(2).prefix(2)))
+        let characters = Array(uci)
+        guard identity.count == 64,
+              characters.count == 4 || characters.count == 5,
+              let fromSq = Square(algebraic: String(characters[0...1])),
+              let toSq   = Square(algebraic: String(characters[2...3])),
+              fromSq != toSq
         else { return nil }
 
         let fromIdx = fromSq.file * 8 + fromSq.rank   // file-major
         let toIdx   = toSq.file   * 8 + toSq.rank
         guard let movingPiece = identity[fromIdx] else { return nil }
 
+        // A stale identity snapshot must never make the motor overwrite one of
+        // the mover's own pieces. Full legality belongs to ChessCore/session
+        // state, which carries side-to-move and rights; this is the fail-safe
+        // consistency check available at the wire-codec boundary.
+        if identity[toIdx]?.color == movingPiece.color { return nil }
+
+        let promotionPiece: Piece?
+        if characters.count == 5 {
+            let expectedFromRank = movingPiece.color == .white ? 6 : 1
+            let expectedRankDelta = movingPiece.color == .white ? 1 : -1
+            let fileDelta = abs(toSq.file - fromSq.file)
+            guard movingPiece.type == .pawn,
+                  fromSq.rank == expectedFromRank,
+                  toSq.rank - fromSq.rank == expectedRankDelta,
+                  fileDelta <= 1,
+                  (movingPiece.color == .white ? toSq.rank == 7 : toSq.rank == 0),
+                  let promoted = promotedPiece(from: characters[4], color: movingPiece.color)
+            else { return nil }
+            // A forward promotion must land on an empty square; a diagonal
+            // promotion must capture an opposing piece. The codec does not own
+            // full move legality, but it must never command the motor to invent
+            // or erase a physically impossible last-rank capture.
+            if fileDelta == 0 {
+                guard identity[toIdx] == nil else { return nil }
+            } else {
+                guard identity[toIdx]?.color == movingPiece.color.opposite else { return nil }
+            }
+            promotionPiece = promoted
+        } else {
+            // A pawn may not be left as a pawn on the back rank. Require the
+            // promotion suffix rather than silently emitting an impossible
+            // target board.
+            if movingPiece.type == .pawn && (toSq.rank == 0 || toSq.rank == 7) {
+                return nil
+            }
+            promotionPiece = nil
+        }
+
         var target = identity
 
         // Castling: king moves exactly 2 files.
         if movingPiece.type == .king && abs(fromSq.file - toSq.file) == 2 {
             let rank = fromSq.rank
+            let homeRank = movingPiece.color == .white ? 0 : 7
             let isKingside          = toSq.file > fromSq.file
             let (rookFrom, rookTo)  = isKingside ? (7, 5) : (0, 3)
+            let rookFromIdx = rookFrom * 8 + rank
+            let rookToIdx = rookTo * 8 + rank
+            let pathFiles = isKingside ? [5, 6] : [1, 2, 3]
+            guard fromSq.file == 4,
+                  rank == homeRank,
+                  toSq.rank == homeRank,
+                  (toSq.file == 2 || toSq.file == 6),
+                  pathFiles.allSatisfy({ identity[$0 * 8 + rank] == nil }),
+                  let rook = identity[rookFromIdx],
+                  rook == Piece(type: .rook, color: movingPiece.color),
+                  identity[rookToIdx] == nil
+            else { return nil }
             target[fromIdx]          = nil
             target[toIdx]            = movingPiece
-            target[rookFrom * 8 + rank] = nil
-            target[rookTo   * 8 + rank] = Piece(type: .rook, color: movingPiece.color)
+            target[rookFromIdx]       = nil
+            target[rookToIdx]         = rook
             return target
         }
 
@@ -570,20 +626,22 @@ public struct ChessnutMoveAdapter: BoardAdapter {
            identity[toIdx] == nil
         {
             let capturedIdx = toSq.file * 8 + fromSq.rank
+            let expectedRankDelta = movingPiece.color == .white ? 1 : -1
+            let expectedFromRank = movingPiece.color == .white ? 4 : 3
+            guard fromSq.rank == expectedFromRank,
+                  toSq.rank - fromSq.rank == expectedRankDelta,
+                  identity[capturedIdx] == Piece(type: .pawn, color: movingPiece.color.opposite)
+            else { return nil }
             target[fromIdx]    = nil
             target[toIdx]      = movingPiece
             target[capturedIdx] = nil
             return target
         }
 
-        // Promotion: 5th UCI character specifies the promoted piece type.
-        if uci.count >= 5 {
-            let promoChar = uci[uci.index(uci.startIndex, offsetBy: 4)]
-            if let promoted = promotedPiece(from: promoChar, color: movingPiece.color) {
-                target[fromIdx] = nil
-                target[toIdx]   = promoted
-                return target
-            }
+        if let promotionPiece {
+            target[fromIdx] = nil
+            target[toIdx] = promotionPiece
+            return target
         }
 
         // Normal move / capture (capture: overwrite the to-square).

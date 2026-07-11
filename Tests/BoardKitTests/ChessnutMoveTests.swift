@@ -661,6 +661,46 @@ private let f4LEDBytes = Data([
     #expect(piece(at: "e7", in: targetId) == nil)
 }
 
+@Test func executeMoveRejectsMalformedAndUnsafeTargets() {
+    func encoded(_ uci: String, identity: [Piece?]) -> Data? {
+        var adapter = ChessnutMoveAdapter()
+        _ = adapter.feed(bytes: ChessnutMoveAdapter.encodeFrame(identity: identity))
+        return adapter.encode(.executeMove(uci: uci))
+    }
+
+    var pawn = [Piece?](repeating: nil, count: 64)
+    pawn[4 * 8 + 6] = Piece(type: .pawn, color: .white) // e7
+    #expect(encoded("e7e8", identity: pawn) == nil, "promotion suffix is required")
+    #expect(encoded("e7e8x", identity: pawn) == nil, "invalid promotion piece")
+    #expect(encoded("e7e8qq", identity: pawn) == nil, "overlong UCI")
+    pawn[4 * 8 + 7] = Piece(type: .rook, color: .black) // e8 occupied by opponent
+    #expect(encoded("e7e8q", identity: pawn) == nil, "a pawn cannot capture forward while promoting")
+    pawn[4 * 8 + 7] = nil
+    #expect(encoded("e7d8q", identity: pawn) == nil, "a diagonal promotion requires a capture")
+    pawn[3 * 8 + 7] = Piece(type: .rook, color: .black) // d8: valid capture-promotion
+    #expect(encoded("e7d8q", identity: pawn) != nil)
+
+    var castle = [Piece?](repeating: nil, count: 64)
+    castle[4 * 8] = Piece(type: .king, color: .white) // e1; h1 rook absent
+    #expect(encoded("e1g1", identity: castle) == nil, "must not invent a missing rook")
+    castle[7 * 8] = Piece(type: .rook, color: .white)
+    castle[5 * 8] = Piece(type: .bishop, color: .black) // f1 blocks the physical path
+    #expect(encoded("e1g1", identity: castle) == nil, "castling path must match the snapshot")
+
+    var enPassant = [Piece?](repeating: nil, count: 64)
+    enPassant[4 * 8 + 4] = Piece(type: .pawn, color: .white) // e5; d5 pawn absent
+    #expect(encoded("e5d6", identity: enPassant) == nil, "must not invent an en-passant capture")
+    enPassant[4 * 8 + 4] = nil
+    enPassant[4 * 8 + 3] = Piece(type: .pawn, color: .white) // e4
+    enPassant[3 * 8 + 3] = Piece(type: .pawn, color: .black) // d4
+    #expect(encoded("e4d5", identity: enPassant) == nil, "en passant requires the fifth rank")
+
+    var ownTarget = [Piece?](repeating: nil, count: 64)
+    ownTarget[1 * 8] = Piece(type: .knight, color: .white) // b1
+    ownTarget[2 * 8 + 2] = Piece(type: .pawn, color: .white) // c3
+    #expect(encoded("b1c3", identity: ownTarget) == nil, "must not overwrite an own piece")
+}
+
 // MARK: - LED style mapping
 
 @Test func ledStyleDanger() {
