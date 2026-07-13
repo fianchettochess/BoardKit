@@ -695,6 +695,21 @@ private let f4LEDBytes = Data([
     enPassant[3 * 8 + 3] = Piece(type: .pawn, color: .black) // d4
     #expect(encoded("e4d5", identity: enPassant) == nil, "en passant requires the fifth rank")
 
+    // File delta must be exactly 1: "e5g6" (two files over, correct EP ranks,
+    // empty target) with an enemy pawn sitting on g5 previously slipped
+    // through the EP branch — the codec would command the motor to teleport
+    // the pawn two files AND delete a third piece.
+    var epFileDelta = [Piece?](repeating: nil, count: 64)
+    epFileDelta[4 * 8 + 4] = Piece(type: .pawn, color: .white) // e5
+    epFileDelta[6 * 8 + 4] = Piece(type: .pawn, color: .black) // g5 ("captured" pawn)
+    #expect(encoded("e5g6", identity: epFileDelta) == nil,
+            "en passant must move exactly one file")
+    var epFileDeltaBlack = [Piece?](repeating: nil, count: 64)
+    epFileDeltaBlack[4 * 8 + 3] = Piece(type: .pawn, color: .black) // e4
+    epFileDeltaBlack[2 * 8 + 3] = Piece(type: .pawn, color: .white) // c4 ("captured" pawn)
+    #expect(encoded("e4c3", identity: epFileDeltaBlack) == nil,
+            "en passant must move exactly one file (black)")
+
     var ownTarget = [Piece?](repeating: nil, count: 64)
     ownTarget[1 * 8] = Piece(type: .knight, color: .white) // b1
     ownTarget[2 * 8 + 2] = Piece(type: .pawn, color: .white) // c3

@@ -628,7 +628,14 @@ public struct ChessnutMoveAdapter: BoardAdapter {
             let capturedIdx = toSq.file * 8 + fromSq.rank
             let expectedRankDelta = movingPiece.color == .white ? 1 : -1
             let expectedFromRank = movingPiece.color == .white ? 4 : 3
-            guard fromSq.rank == expectedFromRank,
+            // A pawn captures exactly one file over. Without this check a
+            // malformed frame like "e5g6" (two files over, correct EP ranks,
+            // empty target) passed whenever an enemy pawn happened to sit on
+            // the phantom capture square — commanding the motor to teleport
+            // the pawn two files and delete a third piece. The promotion
+            // branch above already enforces its fileDelta <= 1.
+            guard abs(toSq.file - fromSq.file) == 1,
+                  fromSq.rank == expectedFromRank,
                   toSq.rank - fromSq.rank == expectedRankDelta,
                   identity[capturedIdx] == Piece(type: .pawn, color: movingPiece.color.opposite)
             else { return nil }
