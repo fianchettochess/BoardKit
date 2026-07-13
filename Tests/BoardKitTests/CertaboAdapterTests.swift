@@ -953,7 +953,7 @@ private func standardStartTags() -> [CertaboTagID] {
 
 @Test func rotationClassicLED() {
     // With rotate180, asking for e4 should light d5 (the 180°-rotated square).
-    var adapter = CertaboAdapter(rotate180: true)
+    let adapter = CertaboAdapter(rotate180: true)
     let normal = CertaboAdapter().encode(.indicateSquares(["e4"], style: .highlight))
     let rotated = adapter.encode(.indicateSquares(["e4"], style: .highlight))
     #expect(normal != rotated, "Rotated LED must differ from normal")

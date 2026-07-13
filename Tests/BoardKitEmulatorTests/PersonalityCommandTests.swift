@@ -402,7 +402,7 @@ import BoardKitTestSupport
 
 @Test func certaboRoundTripLEDViaAdapter() {
     var personality = CertaboPersonality()
-    var adapter = CertaboAdapter()
+    let adapter = CertaboAdapter()
     let encoded = adapter.encode(.indicateSquares(["a1", "h8"], style: .highlight))!
     #expect(encoded.count == 8)
     let actions = personality.handleHostWrite(encoded)
@@ -907,4 +907,3 @@ import BoardKitTestSupport
     #expect(overridable.sessionModeForTesting == 6,
             "Host 0xB9 mode 6 must override the initial mode 5")
 }
-
