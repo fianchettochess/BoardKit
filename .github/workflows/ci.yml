@@ -5,7 +5,7 @@ name: CI
 #
 # SIBLING-CHECKOUT PATTERN: BoardKit's Package.swift detects ../ChessCore at
 # resolve time — if the sibling directory exists it uses the local path,
-# otherwise it falls back to the versioned remote (github.com/jaredbrewer/ChessCore).
+# otherwise it falls back to the versioned remote (github.com/fianchettochess/ChessCore).
 # ChessCore is a private repo, so both jobs clone it as a sibling of BoardKit
 # explicitly (using the SIBLINGS_CHECKOUT_PAT secret) so that the
 # sibling-detection path resolves correctly and no remote-fallback auth is needed.
