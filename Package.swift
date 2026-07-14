@@ -33,7 +33,7 @@ let siblingChessCoreManifest = packageDirectory
 let chessCoreDependency: Package.Dependency = FileManager.default.fileExists(
     atPath: siblingChessCoreManifest.path
 ) ? .package(path: "../ChessCore")
-  : .package(url: "https://github.com/jaredbrewer/ChessCore.git", from: "0.3.0")
+  : .package(url: "https://github.com/fianchettochess/ChessCore.git", from: "0.3.0")
 
 let package = Package(
     name: "BoardKit",

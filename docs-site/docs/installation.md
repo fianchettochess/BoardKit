@@ -1,7 +1,7 @@
 # Installation
 
 BoardKit is a Swift Package Manager library. Its only runtime dependency is
-[ChessCore](https://github.com/jaredbrewer/ChessCore) (MIT), which it pulls in
+[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT), which it pulls in
 automatically. No third-party networking, UI, or platform-specific libraries
 are required by the library targets.
 
@@ -48,7 +48,7 @@ targets: [
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jaredbrewer/BoardKit", from: "0.1.0"),
+    .package(url: "https://github.com/fianchettochess/BoardKit", from: "0.1.0"),
 ],
 ```
 

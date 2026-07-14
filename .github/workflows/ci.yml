@@ -42,11 +42,11 @@ jobs:
       # Checkout ChessCore as a sibling so Package.swift's dynamic path
       # detection finds it at ../ChessCore relative to the BoardKit checkout.
       # ChessCore is private — SIBLINGS_CHECKOUT_PAT must be a fine-grained
-      # PAT with Contents: Read access on jaredbrewer/ChessCore.
+      # PAT with Contents: Read access on fianchettochess/ChessCore.
       - name: Checkout ChessCore (sibling)
         uses: actions/checkout@v4
         with:
-          repository: jaredbrewer/ChessCore
+          repository: fianchettochess/ChessCore
           path: ChessCore
           token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
 
@@ -72,7 +72,7 @@ jobs:
       - name: Checkout ChessCore (sibling)
         uses: actions/checkout@v4
         with:
-          repository: jaredbrewer/ChessCore
+          repository: fianchettochess/ChessCore
           path: ChessCore
           token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
 
