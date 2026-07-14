@@ -1,0 +1,90 @@
+name: CI
+
+# Build + test BoardKit on macOS (self-hosted Intel Mac Pro) and Linux
+# (GitHub-hosted ubuntu-latest).
+#
+# SIBLING-CHECKOUT PATTERN: BoardKit's Package.swift detects ../ChessCore at
+# resolve time — if the sibling directory exists it uses the local path,
+# otherwise it falls back to the versioned remote (github.com/jaredbrewer/ChessCore).
+# ChessCore is a private repo, so both jobs clone it as a sibling of BoardKit
+# explicitly (using the SIBLINGS_CHECKOUT_PAT secret) so that the
+# sibling-detection path resolves correctly and no remote-fallback auth is needed.
+# See the "Secrets" section of the CI runbook for the PAT setup.
+#
+# ARCH NOTE: the self-hosted runner is an Intel Mac Pro (x86_64).  BoardKit's
+# library targets are platform-free.  The boardkit-emulator executable uses
+# CoreBluetooth behind an #if os(macOS) && canImport(CoreBluetooth) guard,
+# so it compiles on macOS and produces a no-op stub body on Linux (the library
+# targets are platform-free and build identically on both hosts).
+#
+# GATED OFF — auto-triggers are commented out below.  Nothing runs on
+# push or pull_request until you opt in.  To run immediately:
+#   GitHub → Actions → CI → "Run workflow"
+#
+# To enable on-branch CI uncomment the push / pull_request block below.
+
+on:
+  workflow_dispatch:
+  # Uncomment to enable on-branch CI:
+  # push:
+  #   branches: [main]
+  # pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-self-hosted:
+    name: macOS — self-hosted (Intel Mac Pro)
+    runs-on: [self-hosted, macOS]
+    steps:
+      # Checkout ChessCore as a sibling so Package.swift's dynamic path
+      # detection finds it at ../ChessCore relative to the BoardKit checkout.
+      # ChessCore is private — SIBLINGS_CHECKOUT_PAT must be a fine-grained
+      # PAT with Contents: Read access on jaredbrewer/ChessCore.
+      - name: Checkout ChessCore (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: jaredbrewer/ChessCore
+          path: ChessCore
+          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
+
+      - name: Checkout BoardKit
+        uses: actions/checkout@v4
+        with:
+          path: BoardKit
+
+      - name: Build
+        working-directory: BoardKit
+        run: swift build
+
+      - name: Test
+        working-directory: BoardKit
+        run: swift test
+
+  linux:
+    name: Linux (ubuntu-latest)
+    runs-on: ubuntu-latest
+    container: swift:latest
+    steps:
+      # Same sibling-checkout pattern as the macOS job.
+      - name: Checkout ChessCore (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: jaredbrewer/ChessCore
+          path: ChessCore
+          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
+
+      - name: Checkout BoardKit
+        uses: actions/checkout@v4
+        with:
+          path: BoardKit
+
+      - name: Build
+        working-directory: BoardKit
+        run: swift build
+
+      - name: Test
+        working-directory: BoardKit
+        run: swift test
