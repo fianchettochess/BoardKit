@@ -1,0 +1,58 @@
+name: Release
+
+# Auto-publish a GitHub Release when a version tag (N.N.N) is pushed.
+#
+# BoardKit is a PURE-SWIFT source package — there is NO binary artifact to
+# build or attach, unlike the SwiftStockfish / SwiftReckless release workflows
+# (which compile an xcframework, upload it as the release asset, and rewrite
+# Package.swift to url:+checksum:). So this workflow simply promotes the pushed
+# tag to a GitHub Release with auto-generated notes. It never mutates `main` or
+# the tag; consumers resolve the source at the tag as-is.
+#
+# TRIGGERS: pushing a tag like `0.4.2` is the primary path. Manual
+# workflow_dispatch (with a `version` input naming an EXISTING tag) re-runs it
+# if a Release needs to be (re)created for a tag that is already pushed.
+#
+# Idempotent: if the Release already exists the job is a clean no-op, so a
+# re-pushed tag or a manual re-dispatch never collides (the failure mode that a
+# manual `gh release create` racing this workflow would otherwise cause).
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing tag to (re)publish as a Release (e.g. 0.4.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # No binary to build, so the cheap GitHub-hosted Linux runner is enough —
+    # the job only calls the GitHub Releases API.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists — nothing to do"
+            exit 0
+          fi
+          gh release create "$VERSION" \
+            --title "BoardKit $VERSION" \
+            --verify-tag \
+            --generate-notes
