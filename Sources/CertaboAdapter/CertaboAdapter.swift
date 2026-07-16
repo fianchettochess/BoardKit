@@ -516,6 +516,8 @@ public struct CertaboAdapter: BoardAdapter {
                                    : encodeClassicLED(squares: squares)
         case .executeMove:
             return nil  // not motorised
+        case .requestStoredGames:
+            return nil  // Certabo has no on-device game archive.
         case .custom(let data):
             return data
         }

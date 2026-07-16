@@ -149,6 +149,41 @@ public struct ChessnutAdapter: BoardAdapter {
     /// board-state frame.
     private var previousIdentity: [Piece?]? = nil
 
+    // MARK: - Stored-game import state
+    //
+    // A `.requestStoredGames` import drives a short handshake the adapter
+    // sequences from the board's replies (via `takePendingResponses()`):
+    //
+    //   host → 0x31 01 00                    (file-count query; from encode)
+    //   board→ 0x32 01 <count>               (→ queue upload-mode + 0x33 + 0x34)
+    //   host → 0x21 01 01                    (enter upload mode)
+    //   host → 0x33 01 00                    (ready for import)
+    //   host → 0x34 01 01                    (start import)
+    //   board→ 0x37 01 BE                    (file begin)
+    //   board→ 0x01 …  × N                   (one board-identity snapshot/move)
+    //   board→ 0x37 01 ED                    (file end → reconstruct + emit)
+    //
+    // Per [C-REF] `getFile`, each game is one BE…ED cycle requested by its own
+    // 0x33/0x34 pair, repeated up to `<count>` times. We never send the 0x39
+    // delete — the user's on-board games are preserved.
+
+    /// `true` between a `0x37 01 BE` and its `0x37 01 ED`: `0x01` frames are
+    /// buffered as stored-game snapshots instead of streamed as live state.
+    private var fileTransferActive = false
+
+    /// Board-identity snapshots accumulated for the game currently streaming.
+    private var fileSnapshots: [[Piece?]] = []
+
+    /// Stored games not yet requested. Set from the `0x32` count reply and
+    /// decremented per completed game; while > 0 the adapter re-requests the
+    /// next game after each `0x37 01 ED`.
+    private var filesRemaining = 0
+
+    /// Out-of-band wire responses queued while parsing the last `feed(bytes:)`
+    /// — the transport drains these via `takePendingResponses()` and writes
+    /// each back to the board. Drives the download handshake above.
+    private var pendingResponses: [Data] = []
+
     // MARK: - BoardAdapter conformance
 
     public var capabilities: BoardCapabilities { .chessnutAirFamily }
@@ -204,6 +239,12 @@ public struct ChessnutAdapter: BoardAdapter {
             // unsupported. Return nil so the transport silently skips it —
             // consistent with the documented unsupported-command contract.
             return nil
+        case .requestStoredGames:
+            // First step of the stored-game download handshake: query how many
+            // games are on flash. The board replies with 0x32 01 <count>, which
+            // `processFrame` turns into the mode-switch + 0x33 + 0x34 sequence
+            // queued through `takePendingResponses()`. [C-REF] getFileCount.
+            return Data([Opcode.fileCount, 0x01, 0x00])
         case .custom(let data):
             return data
         }
@@ -248,6 +289,12 @@ public struct ChessnutAdapter: BoardAdapter {
     public mutating func resetFraming() {
         buffer = []
         previousIdentity = nil
+        // Abandon any in-flight stored-game download; a dropped link invalidates
+        // the handshake and the partial snapshot buffer.
+        fileTransferActive = false
+        fileSnapshots.removeAll()
+        filesRemaining = 0
+        pendingResponses.removeAll()
     }
 
     // MARK: - Command encoding helpers
@@ -303,9 +350,19 @@ public struct ChessnutAdapter: BoardAdapter {
         guard !frame.isEmpty else { return [] }
         switch frame[0] {
         case Opcode.boardState:
+            // During a stored-game download, 0x01 frames are archived snapshots,
+            // not live board state. Buffer them; do not emit realtime events.
+            if fileTransferActive {
+                accumulateFileSnapshot(frame)
+                return []
+            }
             return processBoardStateFrame(frame)
         case Opcode.batteryReply:
             return processBatteryFrame(frame)
+        case Opcode.fileCountReply:
+            return processFileCountReply(frame)
+        case Opcode.fileFlag:
+            return processFileFlagFrame(frame)
         default:
             // Unknown / unimplemented opcodes: forward as raw for debug logging.
             return [.raw(Data(frame))]
@@ -387,6 +444,86 @@ public struct ChessnutAdapter: BoardAdapter {
         let raw = frame[2]
         let percent = Int(raw & 0x7F)
         return [.battery(percent: percent)]
+    }
+
+    // MARK: - Stored-game import
+
+    /// Handle a `0x32 01 <count>` file-count reply. Remembers how many games
+    /// are on flash and, if any, enters upload mode and requests the first.
+    /// [C-REF] `getFileCount` reads the count from byte 2.
+    private mutating func processFileCountReply(_ frame: [UInt8]) -> [BoardEvent] {
+        guard frame.count >= 3 else { return [.raw(Data(frame))] }
+        filesRemaining = Int(frame[2])
+        guard filesRemaining > 0 else { return [] }   // no stored games
+        // Enter upload mode once (0x21 01 01), then request the first game.
+        pendingResponses.append(Data([Opcode.mode, 0x01, 0x01]))
+        queueNextGameRequest()
+        return []
+    }
+
+    /// Queue the per-game request pair the board expects before each transfer:
+    /// `0x33 01 00` (ready for import) then `0x34 01 01` (start import).
+    /// [C-REF] `getFile` writes exactly this pair per file.
+    private mutating func queueNextGameRequest() {
+        pendingResponses.append(Data([Opcode.readyForImport, 0x01, 0x00]))
+        pendingResponses.append(Data([Opcode.startImport, 0x01, 0x01]))
+    }
+
+    /// Handle a `0x37 01 BE|ED` file-transfer flag. `BE` opens a game (start
+    /// buffering snapshots); `ED` closes it — reconstruct the buffered
+    /// snapshots and, if more games remain, request the next.
+    /// [C-REF] notification handler: `0x37 01 BE` begin, `0x37 01 ED` end.
+    private mutating func processFileFlagFrame(_ frame: [UInt8]) -> [BoardEvent] {
+        guard frame.count >= 3 else { return [.raw(Data(frame))] }
+        switch frame[2] {
+        case 0xBE:
+            fileTransferActive = true
+            fileSnapshots.removeAll(keepingCapacity: true)
+            return []
+        case 0xED:
+            fileTransferActive = false
+            let event = reconstructBufferedGame()
+            filesRemaining = max(0, filesRemaining - 1)
+            if filesRemaining > 0 { queueNextGameRequest() }
+            fileSnapshots.removeAll(keepingCapacity: true)
+            return event.map { [$0] } ?? []
+        default:
+            return [.raw(Data(frame))]
+        }
+    }
+
+    /// Decode one `0x01` snapshot frame into the file buffer during transfer.
+    private mutating func accumulateFileSnapshot(_ frame: [UInt8]) {
+        guard frame.count >= 34 else { return }
+        let (identity, _) = chessnutDecodeBoard(from: frame, start: 2)
+        fileSnapshots.append(identity)
+    }
+
+    /// Reconstruct the buffered snapshots into a `.storedGameImported` event, or
+    /// `nil` for an empty buffer (firmware quirk — nothing to import).
+    private func reconstructBufferedGame() -> BoardEvent? {
+        guard !fileSnapshots.isEmpty else { return nil }
+        switch ChessnutStoredGameDecoder.reconstruct(snapshots: fileSnapshots) {
+        case .success(let reconstruction):
+            return .storedGameImported(
+                moves: reconstruction.moves,
+                sanMoves: reconstruction.sanMoves,
+                isComplete: reconstruction.isComplete
+            )
+        case .failure:
+            // The stream did not start from the initial position, so no moves
+            // could be anchored. Surface an empty, incomplete import so the
+            // caller can report an unreadable game rather than dropping it.
+            return .storedGameImported(moves: [], sanMoves: [], isComplete: false)
+        }
+    }
+
+    /// Mandatory out-of-band responses queued while parsing the last
+    /// `feed(bytes:)` — the download-handshake steps. The transport drains this
+    /// after every `feed` and writes each value to the command characteristic.
+    public mutating func takePendingResponses() -> [Data] {
+        defer { pendingResponses.removeAll(keepingCapacity: true) }
+        return pendingResponses
     }
 
     // MARK: - LED encoding

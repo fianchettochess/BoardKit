@@ -69,6 +69,21 @@ public enum BoardCommand: Sendable {
     /// `default:` arm on `BoardEvent` switches for forward compatibility.
     case executeMove(uci: String)
 
+    /// Begin importing the games a board has stored on internal flash.
+    ///
+    /// Boards that advertise `BoardCapabilities.gameArchive` (Chessnut
+    /// Air family) record completed games on-device and can replay them to
+    /// the host on request. The adapter's `encode(_:)` returns the first
+    /// wire step (Chessnut: the `0x31` file-count query); the rest of the
+    /// download handshake is driven by the adapter from the board's replies
+    /// via `takePendingResponses()`, and each reconstructed game surfaces as
+    /// a `BoardEvent.storedGameImported`.
+    ///
+    /// Boards without an on-device archive return `nil` (the transport
+    /// silently skips the command) — the standard unsupported-command
+    /// contract.
+    case requestStoredGames
+
     /// Adapter-specific payload not yet modelled above.
     ///
     /// `data` is the complete wire frame in the adapter's encoding.

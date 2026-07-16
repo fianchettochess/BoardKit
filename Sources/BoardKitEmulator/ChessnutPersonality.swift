@@ -52,6 +52,39 @@ public struct ChessnutPersonality: BoardPersonality {
     /// Framing accumulator for fragmented host writes.
     private var buffer: [UInt8] = []
 
+    // MARK: - Stored-game archive (mirrors the board's internal flash)
+    //
+    // A real Air-family board records completed games and replays them on a
+    // host `requestStoredGames` import. The personality models that: it records
+    // each settled position of live play, commits a game when the board is
+    // reset to the initial setup, and streams the archive back over the file
+    // characteristic when the host runs the download handshake.
+
+    /// Completed games, each an ordered list of file-major settled snapshots.
+    /// Seed via `init(storedGames:)` for deterministic tests.
+    private var storedGames: [[[Piece?]]]
+
+    /// The game in progress, as settled-position snapshots (starts at the
+    /// initial position). Committed to `storedGames` when the board resets.
+    private var currentGame: [[Piece?]]
+
+    /// Games queued for replay during the active import (set on the 0x31 query,
+    /// drained one per 0x34 start-import).
+    private var replayQueue: [[[Piece?]]] = []
+
+    /// File-major (a1=0…h8=63) identity of the initial position — the anchor a
+    /// board reset returns to and every recording begins from.
+    static let initialFileMajorIdentity: [Piece?] = {
+        let position = Position.initial()
+        var fileMajor = [Piece?](repeating: nil, count: 64)
+        for file in 0..<8 {
+            for rank in 0..<8 {
+                fileMajor[file * 8 + rank] = position.board[rank * 8 + file]
+            }
+        }
+        return fileMajor
+    }()
+
     public let advertisedName: String
 
     /// Battery level reported by `0x29` requests (0–100).
@@ -62,20 +95,14 @@ public struct ChessnutPersonality: BoardPersonality {
 
     public init(advertisedName: String = "Chessnut Air",
                 batteryPercent: Int = 88,
-                isCharging: Bool = false) {
+                isCharging: Bool = false,
+                storedGames: [[[Piece?]]] = []) {
         self.advertisedName = advertisedName
         self.batteryPercent = batteryPercent
         self.isCharging = isCharging
-
-        // Initial-position identity via ChessCore (rank-major → file-major).
-        let position = Position.initial()
-        var fileMajor = [Piece?](repeating: nil, count: 64)
-        for file in 0..<8 {
-            for rank in 0..<8 {
-                fileMajor[file * 8 + rank] = position.board[rank * 8 + file]
-            }
-        }
-        self.identity = fileMajor
+        self.identity = Self.initialFileMajorIdentity
+        self.storedGames = storedGames
+        self.currentGame = [Self.initialFileMajorIdentity]
     }
 
     // MARK: - BoardPersonality
@@ -105,6 +132,7 @@ public struct ChessnutPersonality: BoardPersonality {
         switch event {
         case .squareSensed(let square, let isLift, let piece):
             applySensed(square: square, isLift: isLift, piece: piece)
+            recordSettledPosition()
             return [boardStateFrame()]
 
         case .identitySnapshot(let snapshot):
@@ -112,6 +140,7 @@ public struct ChessnutPersonality: BoardPersonality {
                 identity = snapshot
                 airborne.removeAll()
             }
+            recordSettledPosition()
             return [boardStateFrame()]
 
         case .occupancySnapshot:
@@ -122,9 +151,11 @@ public struct ChessnutPersonality: BoardPersonality {
         case .battery(let percent):
             return [batteryFrame(percent: percent, charging: isCharging)]
 
-        case .ready, .connected, .disconnected, .raw, .promotionPick:
+        case .ready, .connected, .disconnected, .raw, .promotionPick, .storedGameImported:
             // Chessnut readiness is implicit in the first streamed frame.
             // .promotionPick is ChessUp-specific; Chessnut uses identity snapshots.
+            // .storedGameImported is a host-side reconstruction result — it never
+            // flows back to the board side.
             return []
         }
     }
@@ -173,9 +204,72 @@ public struct ChessnutPersonality: BoardPersonality {
         case 0x0B:
             return [.log("chessnut: beep \(frame.map { String(format: "%02X", $0) }.joined(separator: " "))")]
 
+        case 0x31:
+            // File-count query → reply 0x32 01 <count> on the command-response
+            // channel and arm the replay queue for the ensuing downloads.
+            replayQueue = effectiveStoredGames
+            let count = UInt8(min(255, replayQueue.count))
+            return [.notify(PersonalityFrame(characteristicUUID: ChessnutGATT.commandResponseChar,
+                                             data: Data([0x32, 0x01, count])))]
+
+        case 0x33:
+            // Ready-for-import handshake step; the transfer starts on 0x34.
+            return [.log("chessnut: ready-for-import")]
+
+        case 0x34:
+            // Start-import → stream the next queued game on the file channel.
+            guard !replayQueue.isEmpty else {
+                return [.log("chessnut: start-import with empty replay queue")]
+            }
+            let game = replayQueue.removeFirst()
+            return fileTransferActions(for: game)
+
         default:
             return [.log("chessnut: unhandled host opcode 0x\(String(format: "%02X", opcode))")]
         }
+    }
+
+    // MARK: - Stored-game recording + replay
+
+    /// Games available to a download: committed games plus the in-progress one
+    /// (if it has advanced past the initial position).
+    private var effectiveStoredGames: [[[Piece?]]] {
+        var games = storedGames
+        if currentGame.count > 1 { games.append(currentGame) }
+        return games
+    }
+
+    /// Record the current identity as a settled game position when the board is
+    /// at rest (nothing lifted). A reset to the initial setup commits the prior
+    /// game and starts a fresh recording — mirroring how a real board detects a
+    /// new game.
+    private mutating func recordSettledPosition() {
+        guard airborne.isEmpty else { return }        // mid-move; not settled
+        if identity == currentGame.last { return }    // no positional change
+        if identity == Self.initialFileMajorIdentity {
+            if currentGame.count > 1 { storedGames.append(currentGame) }
+            currentGame = [identity]
+            return
+        }
+        currentGame.append(identity)
+    }
+
+    /// Build the board→host frame sequence for one stored game: a `0x37 01 BE`
+    /// begin marker, one `0x01` board frame per snapshot, then `0x37 01 ED`,
+    /// all on the file characteristic.
+    private func fileTransferActions(for snapshots: [[Piece?]]) -> [PeripheralAction] {
+        let file = ChessnutGATT.fileChar
+        var actions: [PeripheralAction] = [
+            .notify(PersonalityFrame(characteristicUUID: file, data: Data([0x37, 0x01, 0xBE]))),
+        ]
+        for snapshot in snapshots {
+            actions.append(.notify(PersonalityFrame(
+                characteristicUUID: file,
+                data: ChessnutAdapter.encodeFrame(identity: snapshot)
+            )))
+        }
+        actions.append(.notify(PersonalityFrame(characteristicUUID: file, data: Data([0x37, 0x01, 0xED]))))
+        return actions
     }
 
     // MARK: - Mirror maintenance

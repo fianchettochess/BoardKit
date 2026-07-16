@@ -286,27 +286,25 @@ private func piece(at algebraic: String, in identity: [Piece?]) -> Piece? {
 
 // MARK: - G9: OTB file-transfer flags
 
-@Test func g9FileFlagsPassThroughAsRaw() throws {
-    // 37 01 BE = file transmission starting; 37 01 ED = finished.
-    // The adapter doesn't model OTB import yet; unknown opcodes pass through
-    // as .raw for callers to handle.
+@Test func g9FileFlagsDriveOTBImport() throws {
+    // 37 01 BE = file transmission starting; 37 01 ED = finished. The adapter
+    // now models OTB import: BE opens a transfer (no event yet), and an ED with
+    // no buffered snapshots is an empty transfer (still no event). An unknown
+    // 0x37 subtype passes through as .raw for callers to log.
     var adapter = ChessnutAdapter()
-    let startFlag = Data([0x37, 0x01, 0xBE])
-    let endFlag   = Data([0x37, 0x01, 0xED])
-    let startEvents = adapter.feed(bytes: startFlag)
-    let endEvents   = adapter.feed(bytes: endFlag)
+    let startEvents = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]))
+    #expect(startEvents.isEmpty)
 
-    guard case .raw(let rawData) = startEvents.first else {
-        Issue.record("Expected .raw for file-start flag")
+    let endEvents = adapter.feed(bytes: Data([0x37, 0x01, 0xED]))
+    #expect(endEvents.isEmpty)
+
+    // A 0x37 with an unrecognised third byte is not a transfer marker → .raw.
+    let unknownFlag = Data([0x37, 0x01, 0xFF])
+    guard case .raw(let rawData) = adapter.feed(bytes: unknownFlag).first else {
+        Issue.record("Expected .raw for an unknown 0x37 subtype")
         return
     }
-    #expect(rawData == startFlag)
-
-    guard case .raw(let rawData2) = endEvents.first else {
-        Issue.record("Expected .raw for file-end flag")
-        return
-    }
-    #expect(rawData2 == endFlag)
+    #expect(rawData == unknownFlag)
 }
 
 // MARK: - Square-index math spot checks

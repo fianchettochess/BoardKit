@@ -174,7 +174,7 @@ public struct ChessUpPersonality: BoardPersonality {
             return [PersonalityFrame(characteristicUUID: Self.notifyCharUUID,
                                      data: Data(promoBytes))]
 
-        case .ready, .battery, .connected, .disconnected, .raw:
+        case .ready, .battery, .connected, .disconnected, .raw, .storedGameImported:
             return []
         }
     }

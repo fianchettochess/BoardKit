@@ -372,6 +372,11 @@ public struct ChessUpAdapter: BoardAdapter {
             // ChessUp is not motorised. [PRIMARY] no auto-move command defined.
             return nil
 
+        case .requestStoredGames:
+            // ChessUp stores games on-device, but the pull protocol is not yet
+            // implemented here; return nil so the transport skips it for now.
+            return nil
+
         case .custom(let data):
             return data
         }

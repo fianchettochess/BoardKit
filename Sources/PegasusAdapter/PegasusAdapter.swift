@@ -355,6 +355,9 @@ public struct PegasusAdapter: BoardAdapter {
         case .executeMove:
             // Not motorised — return nil for silent transport skip. [BoardAdapter doc]
             return nil
+        case .requestStoredGames:
+            // DGT Pegasus streams live; no host-pullable on-device game archive.
+            return nil
         case .custom(let data):
             return data
         }

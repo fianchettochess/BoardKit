@@ -79,7 +79,7 @@ public struct MillenniumPersonality: BoardPersonality {
         case .occupancySnapshot:
             // Cannot invent pieces for an identity board.
             return []
-        case .ready, .battery, .connected, .disconnected, .raw, .promotionPick:
+        case .ready, .battery, .connected, .disconnected, .raw, .promotionPick, .storedGameImported:
             return []
         }
     }

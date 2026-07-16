@@ -230,6 +230,10 @@ public struct ChessnutMoveAdapter: BoardAdapter {
             return encodeLED(squares: squares, style: style)
         case .executeMove(let uci):
             return encodeExecuteMove(uci: uci)
+        case .requestStoredGames:
+            // The Move shares the Air-family storage protocol, but stored-game
+            // import is wired only in ChessnutAdapter (classic profile) for now.
+            return nil
         case .custom(let data):
             return data
         }

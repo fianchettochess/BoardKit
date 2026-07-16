@@ -102,6 +102,9 @@ public struct SquareOffAdapter: BoardAdapter {
             // LED effect only). Returning nil causes the transport to silently skip
             // this command until hardware-verified behaviour is documented.
             return nil
+        case .requestStoredGames:
+            // Square Off has no on-device game archive.
+            return nil
         case .custom(let data):
             return data
         }

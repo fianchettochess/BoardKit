@@ -64,6 +64,13 @@ public struct BoardCapabilities: OptionSet, Sendable {
     /// to carry per-robot tracking data.
     public static let perPieceTracking = BoardCapabilities(rawValue: 1 << 6)
 
+    /// The board records completed games to internal flash and can replay
+    /// them to the host. When set, `BoardCommand.requestStoredGames` is
+    /// honoured and the adapter emits `BoardEvent.storedGameImported` per
+    /// game. Chessnut Air family (Air, Air+, Pro, Go) set this; occupancy-only
+    /// and stateless boards do not.
+    public static let gameArchive      = BoardCapabilities(rawValue: 1 << 7)
+
     // MARK: - Convenience presets
 
     /// Capabilities common to the Chessnut Air family (Air, Air+, Pro, Go).
@@ -72,7 +79,7 @@ public struct BoardCapabilities: OptionSet, Sendable {
     /// that is a wire-level style extension, not a distinct capability bit.
     public static let chessnutAirFamily: BoardCapabilities = [
         .occupancySensing, .pieceIdentity, .perSquareLEDs,
-        .moveIndication, .batteryReporting
+        .moveIndication, .batteryReporting, .gameArchive
     ]
 
     /// Capabilities for a Square Off board (occupancy sensing only; no

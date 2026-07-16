@@ -343,6 +343,8 @@ public struct MillenniumAdapter: BoardAdapter {
                                       ledPattern: 0xFF, isRotated: isRotated)
         case .executeMove:
             return nil   // Millennium boards are not motorised.
+        case .requestStoredGames:
+            return nil   // Millennium has no on-device game archive.
         case .custom(let data):
             return data
         }

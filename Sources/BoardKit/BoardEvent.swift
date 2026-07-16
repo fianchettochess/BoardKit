@@ -131,4 +131,30 @@ public enum BoardEvent: Sendable {
     /// requirement via its value-type nature.  Session code MUST handle this
     /// case and MUST NOT treat it the same as `.raw`.
     case promotionPick(piece: PieceType)
+
+    // MARK: - Stored-game import
+
+    /// One game reconstructed from a board's internal storage during a
+    /// `BoardCommand.requestStoredGames` import.
+    ///
+    /// Emitted by adapters that advertise `BoardCapabilities.gameArchive`
+    /// (Chessnut Air family) once a stored game has been fully streamed off
+    /// the board and diffed back into moves. During an import spanning
+    /// several games the adapter emits one such event per game, in the order
+    /// the board replays them.
+    ///
+    /// - `moves`: the reconstructed moves from the standard initial position,
+    ///   in order. Empty when the board stored only a power-on frame.
+    /// - `sanMoves`: standard algebraic notation for each move (parallel to
+    ///   `moves`); the session composes PGN movetext directly from these.
+    /// - `isComplete`: `true` when every stored snapshot was explained by a
+    ///   legal move; `false` when the replay truncated (corrupt frame or an
+    ///   unreconstructable position) and `moves` holds the prefix recovered
+    ///   before the break. The session should still import a partial game but
+    ///   may flag it.
+    ///
+    /// The board does not store player names, result, or timestamps, so the
+    /// session supplies those (import date, a synthetic event) when creating
+    /// the library entry.
+    case storedGameImported(moves: [Move], sanMoves: [String], isComplete: Bool)
 }
