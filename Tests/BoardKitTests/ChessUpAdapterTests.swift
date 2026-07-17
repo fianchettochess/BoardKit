@@ -974,3 +974,215 @@ private func fileMajorOccupancy(from position: Position) -> [Bool] {
     #expect(d == b1)
 }
 
+// MARK: - G1: Full real-hardware game (BOARD→HOST, 90-ply golden regression)
+//
+// A complete over-the-board game recorded from physical ChessUp hardware in
+// phoneOTB collection mode: every one of the 90 `0xA3` move frames captured on
+// the wire (BLE HCI sniff), replayed through the adapter and checked against the
+// board app's own PGN export. Locks the live-capture decode — normal moves,
+// captures, BOTH castlings (reported as a single king-slide `0xA3`), and the
+// `…g1=Q` promotion (plain pawn-move `0xA3` immediately followed by a `0x97 04`
+// board-side pick) — plus the ack discipline (one `0x21` per move, one `0x23`
+// for the promotion pick). Source: neutral BLE wire capture, 2026-07-16.
+//
+// This resolves the top-of-file "pending" items castling/promotion/capture
+// `0xA3` shapes and the `0x35` sub-byte (constant across every move kind here).
+@Suite("G1 real-hardware full game")
+struct ChessUpRealGameGolden {
+    // 90 real 0xA3 move frames in capture order; trailing comment = ground-truth move.
+    let a3Frames: [Data] = [
+        Data([0xa3, 0x35, 0x03, 0x01, 0x03, 0x03]),  //  1. d2d4
+        Data([0xa3, 0x35, 0x03, 0x06, 0x03, 0x04]),  //  2. d7d5
+        Data([0xa3, 0x35, 0x02, 0x01, 0x02, 0x03]),  //  3. c2c4
+        Data([0xa3, 0x35, 0x02, 0x06, 0x02, 0x05]),  //  4. c7c6
+        Data([0xa3, 0x35, 0x01, 0x00, 0x02, 0x02]),  //  5. b1c3
+        Data([0xa3, 0x35, 0x06, 0x07, 0x05, 0x05]),  //  6. g8f6
+        Data([0xa3, 0x35, 0x06, 0x00, 0x05, 0x02]),  //  7. g1f3
+        Data([0xa3, 0x35, 0x02, 0x07, 0x06, 0x03]),  //  8. c8g4
+        Data([0xa3, 0x35, 0x02, 0x00, 0x06, 0x04]),  //  9. c1g5
+        Data([0xa3, 0x35, 0x04, 0x06, 0x04, 0x05]),  // 10. e7e6
+        Data([0xa3, 0x35, 0x04, 0x01, 0x04, 0x02]),  // 11. e2e3
+        Data([0xa3, 0x35, 0x05, 0x07, 0x01, 0x03]),  // 12. f8b4
+        Data([0xa3, 0x35, 0x00, 0x01, 0x00, 0x02]),  // 13. a2a3
+        Data([0xa3, 0x35, 0x01, 0x03, 0x02, 0x02]),  // 14. b4c3
+        Data([0xa3, 0x35, 0x01, 0x01, 0x02, 0x02]),  // 15. b2c3
+        Data([0xa3, 0x35, 0x07, 0x06, 0x07, 0x05]),  // 16. h7h6
+        Data([0xa3, 0x35, 0x06, 0x04, 0x07, 0x03]),  // 17. g5h4
+        Data([0xa3, 0x35, 0x04, 0x07, 0x06, 0x07]),  // 18. e8g8
+        Data([0xa3, 0x35, 0x02, 0x03, 0x03, 0x04]),  // 19. c4d5
+        Data([0xa3, 0x35, 0x02, 0x05, 0x03, 0x04]),  // 20. c6d5
+        Data([0xa3, 0x35, 0x05, 0x00, 0x04, 0x01]),  // 21. f1e2
+        Data([0xa3, 0x35, 0x01, 0x07, 0x02, 0x05]),  // 22. b8c6
+        Data([0xa3, 0x35, 0x04, 0x00, 0x06, 0x00]),  // 23. e1g1
+        Data([0xa3, 0x35, 0x05, 0x07, 0x04, 0x07]),  // 24. f8e8
+        Data([0xa3, 0x35, 0x07, 0x01, 0x07, 0x02]),  // 25. h2h3
+        Data([0xa3, 0x35, 0x06, 0x03, 0x05, 0x02]),  // 26. g4f3
+        Data([0xa3, 0x35, 0x04, 0x01, 0x05, 0x02]),  // 27. e2f3
+        Data([0xa3, 0x35, 0x03, 0x07, 0x00, 0x04]),  // 28. d8a5
+        Data([0xa3, 0x35, 0x03, 0x00, 0x01, 0x02]),  // 29. d1b3
+        Data([0xa3, 0x35, 0x05, 0x05, 0x04, 0x03]),  // 30. f6e4
+        Data([0xa3, 0x35, 0x05, 0x00, 0x02, 0x00]),  // 31. f1c1
+        Data([0xa3, 0x35, 0x01, 0x06, 0x01, 0x05]),  // 32. b7b6
+        Data([0xa3, 0x35, 0x05, 0x02, 0x04, 0x03]),  // 33. f3e4
+        Data([0xa3, 0x35, 0x03, 0x04, 0x04, 0x03]),  // 34. d5e4
+        Data([0xa3, 0x35, 0x02, 0x02, 0x02, 0x03]),  // 35. c3c4
+        Data([0xa3, 0x35, 0x05, 0x06, 0x05, 0x04]),  // 36. f7f5
+        Data([0xa3, 0x35, 0x01, 0x02, 0x01, 0x04]),  // 37. b3b5
+        Data([0xa3, 0x35, 0x00, 0x04, 0x01, 0x04]),  // 38. a5b5
+        Data([0xa3, 0x35, 0x02, 0x03, 0x01, 0x04]),  // 39. c4b5
+        Data([0xa3, 0x35, 0x02, 0x05, 0x04, 0x06]),  // 40. c6e7
+        Data([0xa3, 0x35, 0x07, 0x03, 0x04, 0x06]),  // 41. h4e7
+        Data([0xa3, 0x35, 0x04, 0x07, 0x04, 0x06]),  // 42. e8e7
+        Data([0xa3, 0x35, 0x05, 0x01, 0x05, 0x02]),  // 43. f2f3
+        Data([0xa3, 0x35, 0x04, 0x03, 0x05, 0x02]),  // 44. e4f3
+        Data([0xa3, 0x35, 0x06, 0x01, 0x05, 0x02]),  // 45. g2f3
+        Data([0xa3, 0x35, 0x06, 0x06, 0x06, 0x04]),  // 46. g7g5
+        Data([0xa3, 0x35, 0x05, 0x02, 0x05, 0x03]),  // 47. f3f4
+        Data([0xa3, 0x35, 0x06, 0x04, 0x06, 0x03]),  // 48. g5g4
+        Data([0xa3, 0x35, 0x07, 0x02, 0x06, 0x03]),  // 49. h3g4
+        Data([0xa3, 0x35, 0x05, 0x04, 0x06, 0x03]),  // 50. f5g4
+        Data([0xa3, 0x35, 0x00, 0x02, 0x00, 0x03]),  // 51. a3a4
+        Data([0xa3, 0x35, 0x07, 0x05, 0x07, 0x04]),  // 52. h6h5
+        Data([0xa3, 0x35, 0x06, 0x00, 0x06, 0x01]),  // 53. g1g2
+        Data([0xa3, 0x35, 0x07, 0x04, 0x07, 0x03]),  // 54. h5h4
+        Data([0xa3, 0x35, 0x02, 0x00, 0x02, 0x05]),  // 55. c1c6
+        Data([0xa3, 0x35, 0x06, 0x03, 0x06, 0x02]),  // 56. g4g3
+        Data([0xa3, 0x35, 0x06, 0x01, 0x07, 0x02]),  // 57. g2h3
+        Data([0xa3, 0x35, 0x04, 0x06, 0x07, 0x06]),  // 58. e7h7
+        Data([0xa3, 0x35, 0x04, 0x02, 0x04, 0x03]),  // 59. e3e4
+        Data([0xa3, 0x35, 0x00, 0x07, 0x04, 0x07]),  // 60. a8e8
+        Data([0xa3, 0x35, 0x05, 0x03, 0x05, 0x04]),  // 61. f4f5
+        Data([0xa3, 0x35, 0x04, 0x05, 0x05, 0x04]),  // 62. e6f5
+        Data([0xa3, 0x35, 0x04, 0x03, 0x05, 0x04]),  // 63. e4f5
+        Data([0xa3, 0x35, 0x04, 0x07, 0x04, 0x01]),  // 64. e8e2
+        Data([0xa3, 0x35, 0x02, 0x05, 0x04, 0x05]),  // 65. c6e6
+        Data([0xa3, 0x35, 0x04, 0x01, 0x04, 0x05]),  // 66. e2e6
+        Data([0xa3, 0x35, 0x05, 0x04, 0x04, 0x05]),  // 67. f5e6
+        Data([0xa3, 0x35, 0x06, 0x07, 0x06, 0x06]),  // 68. g8g7
+        Data([0xa3, 0x35, 0x00, 0x00, 0x04, 0x00]),  // 69. a1e1
+        Data([0xa3, 0x35, 0x06, 0x06, 0x05, 0x05]),  // 70. g7f6
+        Data([0xa3, 0x35, 0x04, 0x05, 0x04, 0x06]),  // 71. e6e7
+        Data([0xa3, 0x35, 0x07, 0x06, 0x04, 0x06]),  // 72. h7e7
+        Data([0xa3, 0x35, 0x04, 0x00, 0x04, 0x06]),  // 73. e1e7
+        Data([0xa3, 0x35, 0x05, 0x05, 0x04, 0x06]),  // 74. f6e7
+        Data([0xa3, 0x35, 0x07, 0x02, 0x07, 0x03]),  // 75. h3h4
+        Data([0xa3, 0x35, 0x06, 0x02, 0x06, 0x01]),  // 76. g3g2
+        Data([0xa3, 0x35, 0x07, 0x03, 0x07, 0x02]),  // 77. h4h3
+        Data([0xa3, 0x35, 0x06, 0x01, 0x06, 0x00]),  // 78. g2g1
+        Data([0xa3, 0x35, 0x03, 0x03, 0x03, 0x04]),  // 79. d4d5
+        Data([0xa3, 0x35, 0x04, 0x06, 0x03, 0x05]),  // 80. e7d6
+        Data([0xa3, 0x35, 0x07, 0x02, 0x07, 0x03]),  // 81. h3h4
+        Data([0xa3, 0x35, 0x03, 0x05, 0x03, 0x04]),  // 82. d6d5
+        Data([0xa3, 0x35, 0x07, 0x03, 0x07, 0x04]),  // 83. h4h5
+        Data([0xa3, 0x35, 0x03, 0x04, 0x04, 0x04]),  // 84. d5e5
+        Data([0xa3, 0x35, 0x07, 0x04, 0x07, 0x05]),  // 85. h5h6
+        Data([0xa3, 0x35, 0x04, 0x04, 0x05, 0x05]),  // 86. e5f6
+        Data([0xa3, 0x35, 0x07, 0x05, 0x07, 0x06]),  // 87. h6h7
+        Data([0xa3, 0x35, 0x05, 0x05, 0x05, 0x06]),  // 88. f6f7
+        Data([0xa3, 0x35, 0x07, 0x06, 0x07, 0x07]),  // 89. h7h8
+        Data([0xa3, 0x35, 0x06, 0x00, 0x06, 0x06]),  // 90. g1g7
+    ]
+    let expectedMoves: [(String, String)] = [
+        ("d2", "d4"), ("d7", "d5"), ("c2", "c4"), ("c7", "c6"), ("b1", "c3"), ("g8", "f6"),
+        ("g1", "f3"), ("c8", "g4"), ("c1", "g5"), ("e7", "e6"), ("e2", "e3"), ("f8", "b4"),
+        ("a2", "a3"), ("b4", "c3"), ("b2", "c3"), ("h7", "h6"), ("g5", "h4"), ("e8", "g8"),
+        ("c4", "d5"), ("c6", "d5"), ("f1", "e2"), ("b8", "c6"), ("e1", "g1"), ("f8", "e8"),
+        ("h2", "h3"), ("g4", "f3"), ("e2", "f3"), ("d8", "a5"), ("d1", "b3"), ("f6", "e4"),
+        ("f1", "c1"), ("b7", "b6"), ("f3", "e4"), ("d5", "e4"), ("c3", "c4"), ("f7", "f5"),
+        ("b3", "b5"), ("a5", "b5"), ("c4", "b5"), ("c6", "e7"), ("h4", "e7"), ("e8", "e7"),
+        ("f2", "f3"), ("e4", "f3"), ("g2", "f3"), ("g7", "g5"), ("f3", "f4"), ("g5", "g4"),
+        ("h3", "g4"), ("f5", "g4"), ("a3", "a4"), ("h6", "h5"), ("g1", "g2"), ("h5", "h4"),
+        ("c1", "c6"), ("g4", "g3"), ("g2", "h3"), ("e7", "h7"), ("e3", "e4"), ("a8", "e8"),
+        ("f4", "f5"), ("e6", "f5"), ("e4", "f5"), ("e8", "e2"), ("c6", "e6"), ("e2", "e6"),
+        ("f5", "e6"), ("g8", "g7"), ("a1", "e1"), ("g7", "f6"), ("e6", "e7"), ("h7", "e7"),
+        ("e1", "e7"), ("f6", "e7"), ("h3", "h4"), ("g3", "g2"), ("h4", "h3"), ("g2", "g1"),
+        ("d4", "d5"), ("e7", "d6"), ("h3", "h4"), ("d6", "d5"), ("h4", "h5"), ("d5", "e5"),
+        ("h5", "h6"), ("e5", "f6"), ("h6", "h7"), ("f6", "f7"), ("h7", "h8"), ("g1", "g7"),
+    ]
+
+    // The 0x97 04 (=Queen) board-side promotion pick arrives immediately after
+    // move #78 (…g1=Q); PGN move 39 is g1=Q.
+    let promotionAfterMoveIndex = 77
+
+    @Test func fullGameDecodesToExpectedMoves() {
+        var adapter = ChessUpAdapter()
+        var moves: [(String, String)] = []
+        var promotionPicks: [PieceType] = []
+        var acks: [Data] = []
+        var pendingFrom: String? = nil
+
+        func drainEvents(_ events: [BoardEvent]) {
+            for e in events {
+                switch e {
+                case .squareSensed(let sq, let isLift, _):
+                    if isLift { pendingFrom = sq }
+                    else if let f = pendingFrom { moves.append((f, sq)); pendingFrom = nil }
+                case .promotionPick(let piece):
+                    promotionPicks.append(piece)
+                default:
+                    break
+                }
+            }
+        }
+
+        for (i, frame) in a3Frames.enumerated() {
+            drainEvents(adapter.feed(bytes: frame))
+            acks.append(contentsOf: adapter.takePendingResponses())
+            if i == promotionAfterMoveIndex {
+                // Board reports the promoted piece right after the pawn reaches g1.
+                drainEvents(adapter.feed(bytes: Data([0x97, 0x04])))
+                acks.append(contentsOf: adapter.takePendingResponses())
+            }
+        }
+
+        // Every move decoded, in order, exactly as the board app exported them.
+        #expect(moves.count == expectedMoves.count)
+        for (idx, pair) in zip(moves, expectedMoves).enumerated() {
+            #expect(pair.0 == pair.1, "move \(idx + 1)")
+        }
+
+        // The promotion is surfaced as a Queen pick (auto-resolves the picker).
+        #expect(promotionPicks == [.queen])
+
+        // Ack discipline: exactly one 0x21 per move frame + one 0x23 for the pick.
+        let moveAcks = acks.filter { $0 == Data([0x21]) }.count
+        let promoAcks = acks.filter { $0 == Data([0x23]) }.count
+        #expect(moveAcks == 90)
+        #expect(promoAcks == 1)
+    }
+
+    @Test func fullGameSurvivesCoalescedDelivery() {
+        // BLE may coalesce several notifications into one feed(); the rolling
+        // buffer must still recover every move. Feed all 90 frames (plus the
+        // promotion pick spliced in) as ONE blob.
+        var blob = Data()
+        for (i, frame) in a3Frames.enumerated() {
+            blob.append(frame)
+            if i == promotionAfterMoveIndex { blob.append(Data([0x97, 0x04])) }
+        }
+        var adapter = ChessUpAdapter()
+        let events = adapter.feed(bytes: blob)
+        var moves: [(String, String)] = []
+        var pendingFrom: String? = nil
+        var picks = 0
+        for e in events {
+            switch e {
+            case .squareSensed(let sq, let isLift, _):
+                if isLift { pendingFrom = sq }
+                else if let f = pendingFrom { moves.append((f, sq)); pendingFrom = nil }
+            case .promotionPick: picks += 1
+            default: break
+            }
+        }
+        #expect(moves.count == expectedMoves.count)
+        for (got, want) in zip(moves, expectedMoves) {
+            #expect(got == want)
+        }
+        #expect(picks == 1)
+        // One ack per raw move frame + one for the promotion pick, all queued.
+        let acks = adapter.takePendingResponses()
+        #expect(acks.filter { $0 == Data([0x21]) }.count == 90)
+        #expect(acks.filter { $0 == Data([0x23]) }.count == 1)
+    }
+}
+

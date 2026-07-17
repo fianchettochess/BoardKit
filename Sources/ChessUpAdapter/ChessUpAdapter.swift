@@ -21,10 +21,28 @@ import BoardKit
 //     Verified on hardware: 0x67 board-state (73 bytes, decodes correctly),
 //     0xB8/0xBB capacitive touch/release, 0xB1 set-state, 0xA3 move frames
 //     (gated behind 0xB9 phoneOTB session — see collectionSessionData()),
-//     0x21/0x23 ack discipline. Still pending: castling/promotion/capture
-//     0xA3 shapes; sub byte 0x35 semantics; 0x99 LEDs on CU2; 0xFD stream
-//     on CU2; 0x66 FEN-load on CU2; in-app end-to-end runtime test; Android
-//     ChessUpBleManager.kt.
+//     0x21/0x23 ack discipline.
+//
+// FULL-GAME WIRE CAPTURE (2026-07-16): a complete 90-ply OTB game harvested
+//     from physical hardware — Android live BLE HCI sniff (btsnoop) + an iOS
+//     PacketLogger session — decoded 0/90 against the board app's own PGN
+//     export. This RESOLVES the formerly-pending 0xA3 shapes and confirms:
+//       • castling → a single king-slide 0xA3 (e1g1/e8g8); no separate rook
+//         frame; occupancy inference completes the rook (unchanged handling).
+//       • promotion → a plain pawn-move 0xA3 to the last rank, immediately
+//         followed by a board-side 0x97 <piece> pick (…g1=Q → 0x97 04).
+//       • capture → a plain from→to 0xA3, no capture flag.
+//       • sub byte 0x35 → CONSTANT across normal/capture/castle/promotion; it
+//         is a message-subtype tag, not a per-move discriminator.
+//       • ack discipline → exactly one 0x21 per 0xA3 + one 0x23 per 0x97.
+//       • iOS transport → identical NUS GATT profile (service/RX/TX UUIDs,
+//         device name "ChessUp") on plain ATT (fixed CID 0x0004); no EATT.
+//     Locked by the G1 golden regression in ChessUpAdapterTests. No downloadable
+//     onboard game archive was observed on either platform — the board streams
+//     completed moves live (0xA3); it does not expose a flash-stored-game pull
+//     (contrast the Chessnut GO, which does). See requestStoredGames below.
+//     Still pending: 0x99 LEDs on CU2; 0xFD stream on CU2; 0x66 FEN-load on
+//     CU2; Android ChessUpBleManager.kt.
 //
 // Sources:
 //   [PRIMARY]    mono424/chessupdriver @ 589d43ad2b5eb32b1bcdcca9db2b4909efe5d9bb
@@ -373,8 +391,14 @@ public struct ChessUpAdapter: BoardAdapter {
             return nil
 
         case .requestStoredGames:
-            // ChessUp stores games on-device, but the pull protocol is not yet
-            // implemented here; return nil so the transport skips it for now.
+            // No board→host stored-game download exists for ChessUp. A full-game
+            // BLE capture on both Android and iOS (2026-07-16) shows the board
+            // streams completed moves LIVE as 0xA3 frames during a phoneOTB
+            // session (.startSession) and exposes no flash-stored-game archive to
+            // pull (unlike the Chessnut GO). "Importing" a ChessUp game therefore
+            // means recording it live via the 0xA3 stream — there is nothing to
+            // request. Return nil so the transport skips it. See top-of-file
+            // FULL-GAME WIRE CAPTURE note.
             return nil
 
         case .custom(let data):
