@@ -106,7 +106,8 @@ public struct SquareOffFramer: Sendable {
             #if canImport(os)
             os_log("Frame buffer exceeded %d bytes with no terminator — dropping %d buffered bytes", log: framerLog, type: .error, Self.maxBufferSize, droppedCount)
             #else
-            print("[SquareOff.Framer] Frame buffer exceeded \(Self.maxBufferSize) bytes with no terminator — dropping \(buffer.count) buffered bytes")
+            // A library must not write to stdout; use stderr on non-os platforms.
+            FileHandle.standardError.write(Data("[SquareOff.Framer] Frame buffer exceeded \(Self.maxBufferSize) bytes with no terminator — dropping \(droppedCount) buffered bytes\n".utf8))
             #endif
             // Fresh Data (not `reset()`) so the oversized allocation
             // is actually released.

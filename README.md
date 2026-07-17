@@ -36,15 +36,29 @@ Foundation.
 | Chessnut Air | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
 | Chessnut Air+ | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
 | Chessnut Pro | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
-| Chessnut Go | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
+| Chessnut Go | **Protocol-verified; onboard stored-game import exercised against real hardware (2026-07)** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
 | Chessnut Move | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | DGT Pegasus | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | ✓ | |
-| Millennium (BLE/USB) | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ | | ✓ (9×9 corner) | | | |
+| Millennium (BLE/USB) | **Protocol-pinned; exercised on a physical board (a live move-decode issue was found + fixed)** | ✓ | ✓ | | ✓ (9×9 corner) | | | |
 | Certabo (classic LED) | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | ✓ | ✓ | | | |
 | Certabo Spectrum RGB | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | | ✓ (9×9 corner) | | | |
 | Tabutronic Sentio | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | | |
 | ChessUp (gen-1) | **Protocol-pinned; transport + frame formats corroborated on ChessUp 2 hardware; gen-1 unit untested** | ✓ | | | ✓ | | | |
-| ChessUp 2 | **Hardware-verified (game-collection path) 2026-07-07** | ✓ | | | pinned | | svc ✓ (pct readable; adapter: charging flag only) | |
+| ChessUp 2 | **Hardware-verified (full 90-ply game, Android + iOS) 2026-07** | ✓ | | | pinned | | svc ✓ (pct readable; adapter: charging flag only) | |
+
+> **Recent hardware validation (2026-07).** The status column reflects what has
+> actually been run against physical hardware, and is deliberately honest about
+> what has not:
+> - **Field-tested on physical boards we own:** Square Off Pro / Kingdom Set
+>   (production), ChessUp 2 (a full 90-ply live game decoded 0/90 on both Android
+>   and iOS — see the ChessUp 2 note), Chessnut Go (onboard stored-game import),
+>   and Millennium (a real move-decode misread was found and fixed).
+> - **Protocol-verified against reference implementations only — no physical
+>   board tested yet, so treat with more caution:** Certabo (classic + Spectrum),
+>   Tabutronic Sentio, DGT Pegasus, Chessnut Move, and ChessUp gen-1. These are
+>   codec-complete with all golden fixtures passing and *should* work, but the
+>   wire behaviour has not been confirmed on the hardware itself. A capture-log
+>   contribution (see below) is the fastest way to promote one of these.
 
 ### Per-board status notes
 
@@ -56,7 +70,9 @@ Foundation.
 - **Chessnut Air family (Air, Air+, Pro, Go):** Protocol-verified against the
   official Chessnut docs, NSStudent/EasyLinkSwiftSDK (MIT), and
   chessnutech/EasyLinkSDK (MIT). All golden-frame fixtures from the pinned spec
-  pass. Awaiting physical-board or BLE capture-log runtime validation.
+  pass. The **Chessnut Go** onboard stored-game import path was exercised against
+  real hardware (2026-07, reconstructing completed games from the board's
+  snapshot log); broader live-play field validation across the family is ongoing.
 
 - **Chessnut Move:** Protocol-pinned against chessnutech/chess_move_api
   (official, no license — protocol facts re-derived independently), with
@@ -79,8 +95,10 @@ Foundation.
   driver readme (facts only, proprietary). Full codec implemented: frame
   encoding/decoding (MF1–MF7 golden fixtures), full-position orientation
   detection, 9×9 LED corner-grid mapping, E2ROM read/write, and delta event
-  generation. Should work — all golden fixtures pass; awaiting physical-board
-  or capture-log validation.
+  generation. All golden fixtures pass, and the adapter has been exercised on a
+  physical Millennium board — a real live move-decode misread was reproduced and
+  fixed there — though systematic field validation across firmware variants is
+  still ongoing.
 
 - **Certabo (classic LED and Spectrum RGB) / Tabutronic Sentio:** Protocol
   pinned against mono424/certabodriver (MIT); LED + occupancy vectors fully
@@ -121,11 +139,22 @@ Foundation.
   transports drain them via `takePendingResponses()` — no raw-frame inspection
   needed in the transport layer.
 
-  **Still pending:** castling/promotion/capture 0xA3 frame shapes; the 0xA3 sub
-  byte (0x35) semantics; 0x99 move-indication LEDs untested on CU2; 0xFD
-  occupancy stream (0x50 enable) untested on CU2; 0x66 FEN-load untested on
-  CU2; in-app end-to-end runtime test; Android Kotlin manager (Swift side
-  compiled; ChessUpBleManager.kt not yet written).
+  **Full-game validation (2026-07):** a complete 90-ply over-the-board game was
+  harvested from physical hardware — an Android live BLE HCI sniff (btsnoop) and
+  an iOS PacketLogger session — and decoded **0/90** against the board app's own
+  PGN export. This RESOLVED the previously-pending 0xA3 frame shapes: castling is
+  a single king-slide 0xA3 (no separate rook frame), promotion is a plain
+  pawn-move 0xA3 immediately followed by a 0x97 board-side pick, capture is a
+  plain from→to 0xA3, and the 0x35 sub byte is **constant** across every move
+  kind (not a discriminator). The iOS transport uses the identical NUS GATT
+  profile on plain ATT (fixed CID 0x0004; no EATT). **No downloadable onboard
+  game archive exists on either platform** — the board streams completed moves
+  live (0xA3); it exposes no flash-stored-game pull (unlike the Chessnut Go).
+  Locked by the `G1` golden regression in `ChessUpAdapterTests`.
+
+  **Still pending:** 0x99 move-indication LEDs untested on CU2; 0xFD occupancy
+  stream (0x50 enable) untested on CU2; 0x66 FEN-load untested on CU2; Android
+  Kotlin manager (Swift side compiled; ChessUpBleManager.kt not yet written).
 
 ## Source attributions by adapter
 

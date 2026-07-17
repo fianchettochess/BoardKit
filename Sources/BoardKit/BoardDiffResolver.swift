@@ -51,6 +51,10 @@ public enum BoardDiffResolver {
         // any (bounded so a deep branch can't blow up).
         var matches: [Resolution] = []
         var frontier: [(Position, [String])] = [(position, [])]
+        // Frontier-width ceiling. At the intended `maxDepth` (≤ ~4) the frontier
+        // stays small and this never triggers; it exists so a caller that raises
+        // `maxDepth` can't grow the BFS geometrically into an unbounded allocation.
+        let maxFrontierWidth = 50_000
         bfs: for depth in 1...maxDepth {
             var nextFrontier: [(Position, [String])] = []
             for (pos, history) in frontier {
@@ -66,6 +70,9 @@ public enum BoardDiffResolver {
                 }
             }
             if !matches.isEmpty { break }   // shallowest depth with any explanation
+            if nextFrontier.count > maxFrontierWidth {
+                nextFrontier.removeLast(nextFrontier.count - maxFrontierWidth)
+            }
             frontier = nextFrontier
         }
         if matches.isEmpty { return [] }

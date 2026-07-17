@@ -888,7 +888,9 @@ public struct ChessUpAdapter: BoardAdapter {
     ///
     /// Verified sentinel (F3): col=6, row=7 → "g8" ✓; col=5, row=5 → "f6" ✓.
     public static func colRowToAlgebraic(col: Int, row: Int) -> String {
-        let fileChar = Character(UnicodeScalar(97 + col)!)
+        // Clamp with the non-failable UInt8 scalar initializer: `feed` bounds-checks
+        // col/row, but this is `public static`, so a direct caller can't trap it.
+        let fileChar = Character(UnicodeScalar(UInt8(97 + min(max(col, 0), 7))))
         return "\(fileChar)\(row + 1)"
     }
 }

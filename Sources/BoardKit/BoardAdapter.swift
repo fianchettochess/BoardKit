@@ -31,11 +31,20 @@ import Foundation
 /// ```
 public protocol BoardAdapter: Sendable {
 
-    /// Static capabilities, queried once at connect time.
+    /// The board's capabilities.
     ///
-    /// The transport (or session) reads this immediately after connecting
-    /// and stores the result. Capability bits determine which event cases
-    /// the session should expect and which kernel paths to activate.
+    /// The transport (or session) reads this immediately after connecting to
+    /// decide which event cases to expect and which kernel paths to activate.
+    ///
+    /// - Important: For most adapters this is fixed for the connection. A few
+    ///   boards, however, only learn their exact variant *after* the first
+    ///   frames arrive — notably ``CertaboAdapter``, which adds `.pieceIdentity`
+    ///   once an RFID board is detected and calibrated, and drops
+    ///   `.perSquareLEDs` once a Spectrum RGB corner-grid is identified. For
+    ///   those, re-read `capabilities` after the connect handshake (or whenever
+    ///   the board's identity may have been established) rather than caching the
+    ///   pre-detection value. Adapters whose capabilities are truly static
+    ///   return the same set at every read.
     var capabilities: BoardCapabilities { get }
 
     /// Decode a raw data chunk and return the resulting semantic events.

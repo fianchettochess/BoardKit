@@ -947,7 +947,9 @@ public struct CertaboAdapter: BoardAdapter {
     static func fileMajorToAlgebraic(_ fm: Int) -> String {
         let file = fm / 8
         let rank = fm % 8
-        let fileChar = Character(UnicodeScalar(97 + file)!)
+        // Clamp with the non-failable UInt8 scalar initializer so this static
+        // helper cannot trap on an out-of-range file from a direct caller.
+        let fileChar = Character(UnicodeScalar(UInt8(97 + min(max(file, 0), 7))))
         return "\(fileChar)\(rank + 1)"
     }
 }

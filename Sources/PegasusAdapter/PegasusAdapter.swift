@@ -137,11 +137,6 @@ private enum MsgId {
 ///
 /// Wire frame: `63 07 BE F5 AE DD A9 5F 00`
 /// (code 0x63, len 0x07 = 6 key bytes + 0x00 terminator, then key bytes, then 0x00)
-///
-/// **Devkey provenance risk:** this is a third-party app's hardcoded key, not a
-/// BoardKit-specific one. Keep it injectable (via `PegasusAdapter.init(devkey:)`)
-/// so integrators can substitute their own key obtained directly from DGT. [spec risk]
-public let pegasusDefaultDevkey: [UInt8] = [0xBE, 0xF5, 0xAE, 0xDD, 0xA9, 0x5F]
 
 // MARK: - PegasusAdapter
 
@@ -229,10 +224,18 @@ public struct PegasusAdapter: BoardAdapter {
 
     // MARK: - Configuration
 
+    /// The dgtdriver / White Pawn app's built-in developer key — the default
+    /// ``devkey``.
+    ///
+    /// **Provenance risk:** a third-party app's hardcoded key, not a
+    /// BoardKit-specific one. Inject your own key obtained directly from DGT for
+    /// production. [spec risk]
+    public static let defaultDevkey: [UInt8] = [0xBE, 0xF5, 0xAE, 0xDD, 0xA9, 0x5F]
+
     /// 6-byte developer key sent in the devkey handshake frame.
     ///
-    /// Defaults to `pegasusDefaultDevkey` (the dgtdriver / White Pawn app's
-    /// built-in key). Inject your own key obtained from DGT for production.
+    /// Defaults to ``defaultDevkey``. Inject your own key obtained from DGT for
+    /// production.
     public var devkey: [UInt8]
 
     /// When `true`, all incoming square indices and outgoing LED indices are
@@ -274,7 +277,7 @@ public struct PegasusAdapter: BoardAdapter {
     }
 
     public init(
-        devkey: [UInt8] = pegasusDefaultDevkey,
+        devkey: [UInt8] = PegasusAdapter.defaultDevkey,
         orientationFlipped: Bool = false
     ) {
         self.devkey = devkey

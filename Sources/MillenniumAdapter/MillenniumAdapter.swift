@@ -314,11 +314,18 @@ public struct MillenniumAdapter: BoardAdapter {
             }
             guard rawBuffer.count >= frameLen else { break }
             let frame = Array(rawBuffer.prefix(frameLen))
-            rawBuffer.removeFirst(frameLen)
             let body = Array(frame.dropLast(2))
             let expected = computeMillenniumChecksum(body)
             let actual = String(bytes: frame.suffix(2), encoding: .ascii) ?? ""
-            guard expected == actual else { continue }   // drop bad frame silently
+            guard expected == actual else {
+                // Resync by a SINGLE byte, not the whole frame window: a stray
+                // byte that merely aliases a frame-type char must not swallow a
+                // real frame that begins inside the misread window (Millennium
+                // runs over lossier USB-serial / BT-Classic links, not just BLE).
+                rawBuffer.removeFirst()
+                continue
+            }
+            rawBuffer.removeFirst(frameLen)
             events += processMillenniumFrame(frame)
         }
         return events
