@@ -15,8 +15,13 @@ import ChessCore
 import BoardKitTestSupport
 
 // Unbuffered stdout so logs are readable in real time when the emulator runs as a
-// background process piped to a file (validation sessions).
+// background process piped to a file (validation sessions). Apple-only: the
+// emulator advertises real BLE and only runs on macOS; on Linux this target is
+// compile-only, and Glibc's `stdout` is a mutable global that Swift 6 strict
+// concurrency (correctly) rejects — so the reference is scoped to Darwin.
+#if canImport(Darwin)
 setvbuf(stdout, nil, _IONBF, 0)
+#endif
 
 // MARK: - Shared setup
 
