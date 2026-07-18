@@ -1,0 +1,46 @@
+name: CI (Linux — push gate)
+
+# Routine on-push gate on the free GitHub-hosted Linux runner, so every commit
+# gets fast feedback without touching the shared self-hosted Mac Pro. BoardKit is
+# cross-platform Swift (its CoreBluetooth/emulator code is `#if os(macOS)` /
+# `#if canImport(Darwin)` guarded). The full macOS + Linux matrix stays in ci.yml
+# (workflow_dispatch); this complements it for routine pushes.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (ubuntu-latest) — swift test
+    runs-on: ubuntu-latest
+    container: swift:latest
+    steps:
+      # BoardKit's Package.swift resolves ChessCore from ../ChessCore when the
+      # sibling is checked out. DOCS_PACKAGES_TOKEN is the org fine-grained PAT
+      # with Contents:Read on the sibling repos.
+      - name: Checkout ChessCore (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: fianchettochess/ChessCore
+          path: ChessCore
+          token: ${{ secrets.DOCS_PACKAGES_TOKEN }}
+
+      - name: Checkout BoardKit
+        uses: actions/checkout@v4
+        with:
+          path: BoardKit
+
+      - name: Build
+        working-directory: BoardKit
+        run: swift build
+
+      - name: Test
+        working-directory: BoardKit
+        run: swift test
