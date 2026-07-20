@@ -61,9 +61,6 @@ Then depend on the products you need:
 ])
 ```
 
-The repo is private until release, so local-path sibling checkouts
-(`.package(path: "../BoardKit")`) are the working form today.
-
 ## Capability and status matrix
 
 | Board | Status | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery | perPiece | gameArchive |
