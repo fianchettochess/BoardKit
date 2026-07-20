@@ -101,7 +101,10 @@ tshark -r capture.pcapng \
   -T fields -e btatt.value \
   | sed 's/../& /g;s/ $//' \
   | sed 's/^/rx /'
-# Paste output (rx lines) into Tests/Fixtures/<board>.replay
+# Paste output (rx lines) into a new .replay file. Tests/Fixtures/ does not
+# exist yet — create it with your first fixture and load it via a
+# #filePath-relative path (the test target declares no SwiftPM resources),
+# or follow the existing Captures/ convention.
 ```
 
 ### Parse errors

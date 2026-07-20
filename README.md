@@ -8,19 +8,27 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A Swift package that defines the board-adapter seam between physical chess
-boards and the Fianchetto chess engine / kernel stack. MIT licensed.
+boards and the Fianchetto engine stack, and ships the board-agnostic kernels
+built on top of that seam.
 
 ## Scope
 
-BoardKit is the **seam layer** — it defines the shared vocabulary (`BoardEvent`,
-`BoardCommand`, `BoardCapabilities`, `BoardAdapter`, `BoardTransport`) that
-lets the kernel stack (move inference, sync gate, correction planner, etc.)
-be written once and work with any physical board.
+**BoardKit** is the **seam and kernel layer** — it defines the shared
+vocabulary (`BoardEvent`, `BoardCommand`, `BoardCapabilities`, `BoardAdapter`,
+`BoardTransport`) and ships the board-agnostic kernels built on it (move
+inference, execution gate, diff resolver, correction planner, takeback
+detector, sync gate, reconnect policy), so downstream session shells (e.g.
+FianchettoKit's `EBoardSessionCore`/`EBoardShellKernel`) are written once and
+work with any physical board.
 
-**This package does NOT contain BLE or USB-HID code.** Transport
-implementations live in FianchettoKit or the app target (they import
-CoreBluetooth or SkipFuse). BoardKit imports only ChessCore (MIT) and
-Foundation.
+**No library target contains BLE or USB-HID code.** Transport implementations
+live in the consuming app targets (they import CoreBluetooth or SkipFuse);
+BoardKit's library targets import only
+[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT) and
+Foundation. The one exception is the `boardkit-emulator` executable, whose
+CoreBluetooth peripheral code is guarded by
+`#if os(macOS) && canImport(CoreBluetooth)` and never enters the library
+graph.
 
 ## Products
 
@@ -28,30 +36,51 @@ Foundation.
 |---|---|
 | `BoardKit` | Core seam protocols and types + board-agnostic kernels |
 | `SquareOffAdapter` | Square Off wire codec and BoardAdapter |
-| `ChessnutAdapter` | Chessnut Air-family BLE adapter |
+| `ChessnutAdapter` | Chessnut Air-family + Chessnut Move BLE adapters (incl. stored-game import decoder) |
 | `PegasusAdapter` | DGT Pegasus BLE adapter |
 | `MillenniumAdapter` | Millennium BLE + USB-HID adapter |
 | `CertaboAdapter` | Certabo RFID adapter (USB serial, BT Classic, BLE) |
 | `ChessUpAdapter` | ChessUp BLE adapter |
 | `BoardKitTestSupport` | ReplayTransport + SimulatedBoard test harness |
+| `boardkit-emulator` | macOS CLI BLE peripheral that emulates a supported board (Square Off, Chessnut, Pegasus, Millennium, Certabo, ChessUp) so the apps on a real phone can connect to it as if it were hardware |
+
+## Installation
+
+Add BoardKit with Swift Package Manager:
+
+```swift
+.package(url: "https://github.com/fianchettochess/BoardKit.git", from: "0.5.1")
+```
+
+Then depend on the products you need:
+
+```swift
+.target(name: "MyApp", dependencies: [
+    .product(name: "BoardKit",        package: "BoardKit"),
+    .product(name: "ChessnutAdapter", package: "BoardKit"),
+])
+```
+
+The repo is private until release, so local-path sibling checkouts
+(`.package(path: "../BoardKit")`) are the working form today.
 
 ## Capability and status matrix
 
-| Board | Status | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery | perPiece |
-|---|---|---|---|---|---|---|---|---|
-| Square Off Pro/GKS | **Battle-tested in-app** | ✓ | | ✓ | ✓ | ✓ (GKS, quarantined) | | |
-| Chessnut Air | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
-| Chessnut Air+ | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
-| Chessnut Pro | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
-| Chessnut Go | **Protocol-verified; onboard stored-game import exercised against real hardware (2026-07)** | ✓ | ✓ | ✓ | ✓ | | ✓ | |
-| Chessnut Move | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| DGT Pegasus | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | ✓ | |
-| Millennium (BLE/USB) | **Protocol-pinned; exercised on a physical board (a live move-decode issue was found + fixed)** | ✓ | ✓ | | ✓ (9×9 corner) | | | |
-| Certabo (classic LED) | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | ✓ | ✓ | | | |
-| Certabo Spectrum RGB | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | | ✓ (9×9 corner) | | | |
-| Tabutronic Sentio | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | | |
-| ChessUp (gen-1) | **Protocol-pinned; transport + frame formats corroborated on ChessUp 2 hardware; gen-1 unit untested** | ✓ | | | ✓ | | | |
-| ChessUp 2 | **Hardware-verified (full 90-ply game, Android + iOS) 2026-07** | ✓ | | | pinned | | svc ✓ (pct readable; adapter: charging flag only) | |
+| Board | Status | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery | perPiece | gameArchive |
+|---|---|---|---|---|---|---|---|---|---|
+| Square Off Pro/GKS | **Battle-tested in-app** | ✓ | | ✓ | ✓ | ✓ (GKS, quarantined) | | | |
+| Chessnut Air | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Air+ | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Pro | **Protocol-verified** | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Go | **Protocol-verified; onboard stored-game import exercised against real hardware (2026-07)** | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Move | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| DGT Pegasus | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | ✓ | | |
+| Millennium (BLE/USB) | **Protocol-pinned; exercised on a physical board (a live move-decode issue was found + fixed)** | ✓ | ✓ | | ✓ (9×9 corner) | | | | |
+| Certabo (classic LED) | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | ✓ | ✓ | | | | |
+| Certabo Spectrum RGB | **Protocol-pinned; should work; hardware-unverified** | ✓ | ✓ (calibrated) | | ✓ (9×9 corner) | | | | |
+| Tabutronic Sentio | **Protocol-pinned; should work; hardware-unverified** | ✓ | | ✓ | ✓ | | | | |
+| ChessUp (gen-1) | **Protocol-pinned; transport + frame formats corroborated on ChessUp 2 hardware; gen-1 unit untested** | ✓ | | | ✓ | | | | |
+| ChessUp 2 | **Hardware-verified (full 90-ply game, Android + iOS) 2026-07** | ✓ | | | pinned | | svc ✓ (pct readable; adapter: charging flag only) | | |
 
 > **Recent hardware validation (2026-07).** The status column reflects what has
 > actually been run against physical hardware, and is deliberately honest about
@@ -195,7 +224,8 @@ tshark -r capture.pcapng \
   -T fields -e btatt.value \
   | sed 's/../& /g;s/ $//' \
   | sed 's/^/rx /'
-# Paste the output (rx lines) into a new Tests/Fixtures/<board>.replay file.
+# Paste the output (rx lines) into a new .replay file (see "Submitting a
+# fixture" below for where to put it).
 ```
 
 ### .replay file format
@@ -210,7 +240,8 @@ are ignored.
 | `event connected`    | Inject `.connected` lifecycle event |
 | `event disconnected` | Inject `.disconnected(error: nil)` lifecycle event |
 
-Example fixture (`Tests/Fixtures/pegasus-initial.replay`):
+Example fixture (format illustration — see `Captures/` for real captured
+sessions):
 
 ```
 # DGT Pegasus — first board dump (initial position, White to move)
@@ -223,6 +254,10 @@ rx 86 00 43 01 01 01 01 01 01 01 01 00 00 00 00 00 00 00 00 ...
 1. Capture a log covering: initial connection, several moves, battery
    request (where available).
 2. Convert to `.replay` format and save under `Tests/Fixtures/`.
+   `Tests/Fixtures/` does not exist yet — create it with your first fixture
+   and load it in the test via a `#filePath`-relative path (the test target
+   declares no SwiftPM resources), or follow the existing `Captures/`
+   convention.
 3. Add a test case in the matching `*AdapterTests.swift` that loads the
    fixture via `ReplayScript.parse(text:)` and asserts the resulting events.
 4. Open a PR. The test gate (`swift test`) must pass before merge.
@@ -230,16 +265,7 @@ rx 86 00 43 01 01 01 01 01 01 01 01 00 00 00 00 00 00 00 00 ...
 ## Quick start
 
 ```swift
-// 1. Add to Package.swift
-.package(path: "../BoardKit"),
-
-// 2. Depend on the products you need
-.target(name: "MyApp", dependencies: [
-    .product(name: "BoardKit",       package: "BoardKit"),
-    .product(name: "ChessnutAdapter", package: "BoardKit"),
-])
-
-// 3. Create an adapter and replay a capture log in tests
+// 1. Create an adapter and replay a capture log in tests
 import BoardKit
 import ChessnutAdapter
 import BoardKitTestSupport
@@ -251,7 +277,7 @@ let replay = ReplayTransport(adapter: adapter, script: [
 let events = replay.runSync()
 // events: [.identitySnapshot([Piece?]), .ready]
 
-// 4. Or parse a .replay fixture file
+// 2. Or parse a .replay fixture file
 let scriptText = try String(contentsOf: fixtureURL, encoding: .utf8)
 let steps = try ReplayScript.parse(text: scriptText)
 let replay2 = ReplayTransport(adapter: ChessnutAdapter(), parsedScript: steps)

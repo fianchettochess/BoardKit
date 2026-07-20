@@ -22,6 +22,10 @@ public enum BoardEvent: Sendable {
     // Housekeeping
     case battery(percent: Int)
     case raw(Data)
+    // Hardware-reported picks
+    case promotionPick(piece: PieceType)
+    // Stored-game import
+    case storedGameImported(moves: [Move], sanMoves: [String], isComplete: Bool)
 }
 ```
 
@@ -57,6 +61,20 @@ support it (Chessnut Air family, DGT Pegasus).
 **`.raw(Data)`** — undecoded bytes for unknown opcodes; session code must
 never branch on this case.
 
+### Hardware-reported picks and stored games
+
+**`.promotionPick(piece:)`** — a board-side promotion piece pick (ChessUp
+`0x97` frame). When the board reports the promotion piece this way, the
+session can auto-resolve the promotion picker without asking the human.
+Session code must handle this case and must NOT treat it like `.raw`.
+
+**`.storedGameImported(moves:sanMoves:isComplete:)`** — one game
+reconstructed from a board's internal storage during a
+`BoardCommand.requestStoredGames` import. Emitted by adapters that advertise
+`BoardCapabilities.gameArchive` (Chessnut Air family), one event per stored
+game. `isComplete` is `false` when the replay truncated and `moves` holds the
+recovered prefix.
+
 ---
 
 ## BoardCommand
@@ -72,6 +90,7 @@ public enum BoardCommand: Sendable {
     case requestState
     case indicateSquares([String], style: LEDStyle)
     case executeMove(uci: String)
+    case requestStoredGames
     case custom(Data)
 }
 ```
@@ -82,6 +101,7 @@ public enum BoardCommand: Sendable {
 | `.requestState` | Request a full occupancy or identity snapshot |
 | `.indicateSquares([String], style:)` | Illuminate squares with the given style |
 | `.executeMove(uci:)` | Ask a motorised board to physically play a move |
+| `.requestStoredGames` | Begin importing the games stored on the board's internal flash (`.gameArchive` boards); each game surfaces as `.storedGameImported` |
 | `.custom(Data)` | Adapter-specific payload not yet in the shared vocabulary |
 
 `squares` in `.indicateSquares` is an array of algebraic strings (`["e2",
@@ -122,6 +142,7 @@ public struct BoardCapabilities: OptionSet, Sendable {
     public static let motorised         // auto-move mechanism
     public static let batteryReporting  // reports battery level
     public static let perPieceTracking  // per-robot unique identity (Chessnut Move)
+    public static let gameArchive       // onboard stored-game archive (requestStoredGames)
 
     // Convenience presets
     public static let chessnutAirFamily: BoardCapabilities
@@ -131,14 +152,14 @@ public struct BoardCapabilities: OptionSet, Sendable {
 
 ### Capability matrix
 
-| Board | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery |
-|---|---|---|---|---|---|---|
-| Square Off Pro / GKS | ✓ | | ✓ | ✓ | ✓ (GKS) | |
-| Chessnut Air family | ✓ | ✓ | ✓ | ✓ | | ✓ |
-| Chessnut Move | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| DGT Pegasus | ✓ | | ✓ | ✓ | | ✓ |
-| Millennium | ✓ | ✓ | | ✓ (9×9 corner) | | |
-| Certabo | ✓ | ✓ | ✓ | ✓ | | |
+| Board | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery | gameArchive |
+|---|---|---|---|---|---|---|---|
+| Square Off Pro / GKS | ✓ | | ✓ | ✓ | ✓ (GKS) | | |
+| Chessnut Air family | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ |
+| Chessnut Move | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| DGT Pegasus | ✓ | | ✓ | ✓ | | ✓ | |
+| Millennium | ✓ | ✓ | | ✓ (9×9 corner) | | | |
+| Certabo | ✓ | ✓ | ✓ | ✓ | | | |
 
 !!! note "Millennium and `perSquareLEDs`"
     The Millennium board uses a 9×9 corner-LED grid rather than per-square LEDs.

@@ -15,7 +15,7 @@ import ChessnutAdapter   // Chessnut Air / Air+ / Pro / Go
 var adapter = ChessnutAdapter()
 print(adapter.capabilities)
 // [.occupancySensing, .pieceIdentity, .perSquareLEDs,
-//  .moveIndication, .batteryReporting]
+//  .moveIndication, .batteryReporting, .gameArchive]
 ```
 
 Each adapter declares its capabilities once at init time. Query

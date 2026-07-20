@@ -10,14 +10,14 @@ orientation flip for one board family. All adapters import only `BoardKit` and
 | Adapter | Status | occupancy | identity | perSquareLEDs | motorised | battery |
 |---|---|---|---|---|---|---|
 | `SquareOffAdapter` | **Battle-tested in-app** | ✓ | | ✓ | ✓ (GKS, quarantined) | |
-| `ChessnutAdapter` (Air family) | **Protocol-verified** | ✓ | ✓ | ✓ | | ✓ |
+| `ChessnutAdapter` (Air family) | **Protocol-verified; Go stored-game import exercised on real hardware (2026-07)** | ✓ | ✓ | ✓ | | ✓ |
 | `ChessnutMoveAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `PegasusAdapter` | Protocol-pinned; hardware-unverified | ✓ | | ✓ | | ✓ |
-| `MillenniumAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | | | |
+| `MillenniumAdapter` | Protocol-pinned; exercised on a physical board (move-decode misread found + fixed) | ✓ | ✓ | | | |
 | `CertaboAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | | |
-| `ChessUpAdapter` (gen-1 / CU2) | **CU2 hardware-verified (2026-07-07)** | ✓ | | | | |
+| `ChessUpAdapter` (gen-1 / CU2) | **Hardware-verified (full 90-ply game, Android + iOS) 2026-07** | ✓ | | | | |
 
-!!! success "ChessUp 2 — hardware-verified (2026-07-07)"
+!!! success "ChessUp 2 — hardware-verified (full 90-ply game, Android + iOS, 2026-07)"
     CU2 BLE transport is **identical to gen-1**: NUS service 6E400001-B5A3-F393-E0A9-E50E24DCCA9E,
     write char 6E400002, notify char 6E400003, Battery 0x180F. No adapter changes required at
     the transport layer.
@@ -26,6 +26,12 @@ orientation flip for one board family. All adapters import only `BoardKit` and
     home rank correct, 0x40 = empty); 0xB8/0xBB capacitive touch/release; 0xB1
     new-game/set-state; 0xA3 move frames (`[A3, sub, fromCol, fromRow, toCol, toRow]`).
     pieceCode in 0xB8 is type-only and color-agnostic (e.g., pawn = 0x00 for both sides).
+    A complete 90-ply over-the-board game (Android btsnoop + iOS PacketLogger) decoded
+    **0/90** against the board app's own PGN export, resolving the 0xA3 frame shapes:
+    castling is a single king-slide 0xA3, promotion is a plain pawn 0xA3 followed by a
+    0x97 board-side pick, capture is a plain from→to 0xA3, and the 0x35 sub byte is
+    constant across every move kind (not a discriminator). Locked by the `G1` golden
+    regression in `ChessUpAdapterTests`.
 
     **Key protocol discovery — phoneOTB session required:** 0xA3 move reporting is gated
     behind a 0xB9 game-settings frame with mode 5 (phoneOTB, both sides human, no remote
@@ -37,11 +43,9 @@ orientation flip for one board family. All adapters import only `BoardKit` and
     board-side promotions require 0x23. The adapter queues both internally —
     `takePendingResponses()` drains them; the transport need not inspect raw frames.
 
-    **Still pending (honest):** live castling/promotion/capture 0xA3 shapes; 0xA3 sub-byte
-    semantics; in-app end-to-end runtime test; 0x99 move-indication LEDs on CU2; 0xFD
-    occupancy stream (0x50 enable); 0x66 FEN-load; Android `ChessUpBleManager.kt`; gen-1
-    physical hardware itself untested (but CU2 corroborates the gen-1-pinned transport and
-    frame formats).
+    **Still pending (honest):** 0x99 move-indication LEDs on CU2; 0xFD occupancy stream
+    (0x50 enable); 0x66 FEN-load; Android `ChessUpBleManager.kt`; gen-1 physical hardware
+    itself untested (but CU2 corroborates the gen-1-pinned transport and frame formats).
 
 ---
 
@@ -76,8 +80,10 @@ Protocol-verified against the official Chessnut docs, NSStudent/EasyLinkSwiftSDK
 (MIT), and chessnutech/EasyLinkSDK (MIT).
 
 The Air / Air+ / Pro / Go family uses the standard Chessnut BLE profile:
-all golden-frame fixtures from the pinned spec pass. Awaiting physical-board or
-BLE capture-log runtime validation.
+all golden-frame fixtures from the pinned spec pass. The **Chessnut Go**
+onboard stored-game import path was exercised against real hardware (2026-07,
+reconstructing completed games from the board's snapshot log); broader
+live-play field validation across the family is ongoing.
 
 Use `ChessnutGATT.isClassicProfile(name:)` to filter BLE scan results to this
 adapter. For the Chessnut Move (motorised board) see the
@@ -88,7 +94,7 @@ import ChessnutAdapter
 
 var adapter = ChessnutAdapter()        // Air / Air+ / Pro / Go
 // capabilities: [.occupancySensing, .pieceIdentity, .perSquareLEDs,
-//                .moveIndication, .batteryReporting]
+//                .moveIndication, .batteryReporting, .gameArchive]
 
 // Feed a raw BLE ATT notification payload:
 let events = adapter.feed(bytes: blePayload)
@@ -332,7 +338,10 @@ hardware-unverified" to "hardware-verified", submit a capture log in the
    request (where available).
 2. Convert to `.replay` format using `tshark` (see the README for the
    one-liner).
-3. Save under `Tests/Fixtures/<board-name>.replay`.
+3. Save under `Tests/Fixtures/<board-name>.replay`. `Tests/Fixtures/` does
+   not exist yet — create it with your first fixture and load it in the test
+   via a `#filePath`-relative path (the test target declares no SwiftPM
+   resources), or follow the existing `Captures/` convention.
 4. Add a test in the matching `*AdapterTests.swift` that loads the fixture
    via `ReplayScript.parse(text:)` and asserts the resulting events.
 5. Open a PR. `swift test` must pass before merge.

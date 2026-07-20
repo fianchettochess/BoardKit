@@ -14,8 +14,14 @@ import BoardKitTestSupport
 final class ChessnutAdapterTests: XCTestCase {
     func testInitialPositionFrame() throws {
         // Load a .replay fixture captured from a real Chessnut Air session.
-        let url = Bundle.module.url(
-            forResource: "chessnut-initial", withExtension: "replay")!
+        // The test target declares no SwiftPM resources, so resolve the file
+        // relative to #filePath rather than via Bundle.module.
+        // (Tests/Fixtures/ does not exist yet — create it with your first
+        // fixture, or follow the existing Captures/ convention.)
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()                    // Tests/BoardKitTests/
+            .deletingLastPathComponent()                    // Tests/
+            .appendingPathComponent("Fixtures/chessnut-initial.replay")
         let text = try String(contentsOf: url, encoding: .utf8)
         let steps = try ReplayScript.parse(text: text)
 

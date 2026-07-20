@@ -1,8 +1,9 @@
 // swift-tools-version: 6.0
 //
-// BoardKit — the board-adapter seam layer between physical chess boards (Square
-// Off, Chessnut Air family, DGT Pegasus, Millennium, …) and the Fianchetto
-// kernel stack (BoardExecutionGate, OccupancyMoveInference, BoardDiffResolver,
+// BoardKit — the board-adapter seam between physical chess boards (Square
+// Off, Chessnut Air family, DGT Pegasus, Millennium, …) and downstream session
+// shells, plus the shared board-agnostic kernels built on that seam
+// (BoardExecutionGate, OccupancyMoveInference, BoardDiffResolver,
 // BoardCorrectionPlanner, BoardSyncGate, BoardReconnectPolicy, ChessBoardGeometry).
 //
 // Three-target design (as of 2026-07-03 extraction pass):
@@ -54,26 +55,29 @@ let package = Package(
         .library(name: "BoardKit", targets: ["BoardKit"]),
         // Square Off protocol codec + BoardAdapter implementation.
         .library(name: "SquareOffAdapter", targets: ["SquareOffAdapter"]),
-        // Chessnut Air-family adapter (Air, Air+, Pro, Go).
+        // Chessnut Air-family adapter (Air, Air+, Pro, Go) + Chessnut Move.
         // Protocol-verified against the official Chessnut docs, SWIFT-REF
         // (NSStudent/EasyLinkSwiftSDK, MIT), and C-REF (EasyLinkSDK, MIT).
-        // Hardware-unverified — awaiting physical-board or capture-log
-        // validation (see README).
+        // Chessnut Go onboard stored-game import exercised against real
+        // hardware (2026-07); broader live-play field validation ongoing
+        // (see README).
         .library(name: "ChessnutAdapter", targets: ["ChessnutAdapter"]),
         // DGT Pegasus BLE adapter. Occupancy-sensing + per-square LED move indication.
         // Protocol-informed from DGT developer resources; hardware-unverified.
         .library(name: "PegasusAdapter", targets: ["PegasusAdapter"]),
         // Millennium chess board adapter (BLE + USB-HID family).
         // Piece identity via Hall sensors; 9×9 corner LED grid.
-        // Protocol-informed from MIT community drivers; hardware-unverified.
+        // Protocol-informed from MIT community drivers; exercised on a
+        // physical board (a live move-decode misread was found + fixed).
         .library(name: "MillenniumAdapter", targets: ["MillenniumAdapter"]),
         // Certabo e-board adapter (USB serial, RFID piece identity).
         // Per-square LED indicators. Protocol-informed from MIT drivers;
         // hardware-unverified.
         .library(name: "CertaboAdapter", targets: ["CertaboAdapter"]),
-        // ChessUp BLE adapter (Moverio/BrainBox smart board).
-        // Per-square LEDs; piece identity TBD. Protocol partially known from
-        // community BLE captures; hardware-unverified.
+        // ChessUp BLE adapter (Bryght Labs, gen-1 + ChessUp 2).
+        // NUS GATT transport, occupancy sensing, move-indication LEDs.
+        // Protocol-pinned against mono424/chessupdriver; ChessUp 2
+        // hardware-verified (full 90-ply game, Android + iOS, 2026-07).
         .library(name: "ChessUpAdapter", targets: ["ChessUpAdapter"]),
         // Test support: ReplayTransport + SimulatedBoard. Listed as a product
         // so test-only app targets can depend on it. Not part of the production
@@ -141,7 +145,8 @@ let package = Package(
         // ── Millennium adapter ────────────────────────────────────────────────
         // Piece identity via Hall sensors; 9×9 corner LED grid for move
         // indication. BLE + USB-HID connection modes.
-        // Hardware-unverified: awaiting physical-board or capture-log.
+        // Exercised on a physical board (move-decode misread found + fixed);
+        // systematic field validation across firmware variants ongoing.
         .target(
             name: "MillenniumAdapter",
             dependencies: [
@@ -166,8 +171,9 @@ let package = Package(
         ),
 
         // ── ChessUp adapter ───────────────────────────────────────────────────
-        // Per-square LEDs; piece identity TBD. BLE connection.
-        // Hardware-unverified: awaiting physical-board or BLE capture-log.
+        // NUS GATT transport; occupancy + move-indication LEDs (no per-square
+        // contract). ChessUp 2 hardware-verified (full 90-ply game, 2026-07);
+        // gen-1 unit untested but shares the identical NUS profile.
         .target(
             name: "ChessUpAdapter",
             dependencies: [

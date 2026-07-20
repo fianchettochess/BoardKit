@@ -24,6 +24,9 @@ public protocol BoardAdapter: Sendable {
     func encode(_ command: BoardCommand) -> Data?
     func handshakeCommands(isReconnect: Bool)
         -> [(command: BoardCommand, delayBefore: TimeInterval)]
+    // Default: empty. Ack-based protocols like ChessUp override it —
+    // the transport must drain it after every feed(bytes:).
+    mutating func takePendingResponses() -> [Data]
 }
 ```
 
@@ -53,6 +56,18 @@ adapter pure and testable without a live transport or timer.
 
 `isReconnect: true` for a restored link (BLE drop-and-reconnect),
 `false` for the initial fresh connection.
+
+### `takePendingResponses()`
+
+Mandatory wire-level responses the adapter queued while parsing the most
+recent `feed(bytes:)` input. The default implementation returns `[]`;
+ack-based protocols override it. The ChessUp board retransmits every `0xA3`
+move frame until the host writes a `0x21` ack (and board-side promotions
+until a `0x23` ack) — leaving them unacked floods the notify pipe until the
+BLE link drops. The transport MUST call this immediately after every
+`feed(bytes:)` and write each returned payload to the board's write
+characteristic. Draining is destructive: each queued response is returned
+exactly once.
 
 ```swift
 // Chessnut Air — first connect:
@@ -92,6 +107,8 @@ The transport's responsibility is:
 
 1. On raw BLE data arrival: call `adapter.feed(bytes:)` → yield each
    `BoardEvent` into `events`.
+   After each feed, call `adapter.takePendingResponses()` and write every
+   returned payload to the board's write characteristic.
 2. On link established: yield `.connected`, execute
    `adapter.handshakeCommands(isReconnect:)` with inter-command delays, then
    let `adapter.feed()` emit `.ready` when the board ACKs.

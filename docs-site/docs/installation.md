@@ -30,7 +30,7 @@ BoardKit and ChessCore are sibling packages. Add both as path dependencies:
 // Package.swift
 dependencies: [
     .package(path: "../BoardKit"),
-    .package(path: "../ChessCore"),   // BoardKit re-exports ChessCore types
+    .package(path: "../ChessCore"),   // BoardKit's public API uses ChessCore types (Piece, Position, Move) — import ChessCore in files that name them
 ],
 targets: [
     .target(
@@ -71,7 +71,7 @@ its own wire-codec files and declares no transitive library dependencies beyond
 | DGT Pegasus | `PegasusAdapter` |
 | Millennium (BLE or USB) | `MillenniumAdapter` |
 | Certabo / Tabutronic Sentio | `CertaboAdapter` |
-| ChessUp (gen-1) | `ChessUpAdapter` |
+| ChessUp (gen-1 / ChessUp 2) | `ChessUpAdapter` |
 | Tests and simulation | `BoardKitTestSupport` |
 
 ## Import

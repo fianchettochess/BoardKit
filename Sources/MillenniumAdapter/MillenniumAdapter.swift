@@ -5,7 +5,9 @@ import BoardKit
 // ── Millennium ChessLink adapter ──────────────────────────────────────────────
 //
 // HARDWARE STATUS: protocol-verified against domschl/python-mchess (MIT) and
-// alstrup/chesslink (MIT); awaiting physical-board or capture-log validation.
+// alstrup/chesslink (MIT); exercised on a physical Millennium board (a live
+// move-decode misread was found and fixed there); systematic field validation
+// across firmware variants is still ongoing.
 //
 // Sources consulted:
 //   [MCHESS]  domschl/python-mchess — magic-board.md + chess_link*.py (MIT)
