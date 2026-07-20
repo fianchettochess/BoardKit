@@ -1,5 +1,12 @@
 # BoardKit
 
+[![Swift Package Index — Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ffianchettochess%2FBoardKit%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/fianchettochess/BoardKit)
+[![Swift Package Index — Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ffianchettochess%2FBoardKit%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/fianchettochess/BoardKit)
+[![Release](https://img.shields.io/github/v/release/fianchettochess/BoardKit?sort=semver&label=release&color=blue)](https://github.com/fianchettochess/BoardKit/releases)
+[![CI](https://github.com/fianchettochess/BoardKit/actions/workflows/ci.yml/badge.svg)](https://github.com/fianchettochess/BoardKit/actions/workflows/ci.yml)
+[![Linux CI](https://github.com/fianchettochess/BoardKit/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/fianchettochess/BoardKit/actions/workflows/ci-linux.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A Swift package that defines the board-adapter seam between physical chess
 boards and the Fianchetto chess engine / kernel stack. MIT licensed.
 
@@ -258,3 +265,9 @@ official EasyLinkSDK) may inform code with source-attribution comments.
 GPL/AGPL sources and license-less repos are **facts only** — protocol
 constants and frame layouts may be learned, but no code structure may be
 copied. See per-adapter file headers for specific source tags.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Rules for what adapter authors may learn from
+third-party sources are in [License hygiene](#license-hygiene-adapter-authors)
+above.
