@@ -59,6 +59,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The Swift container runs as a different user than the host checkout
+      # process. Trust only this exact, ephemeral Actions workspace so Git can
+      # validate the checked-out tag without weakening ownership checks more
+      # broadly.
+      - name: Trust checked-out workspace
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}/BoardKit"
+
       - name: Configure private ChessCore access
         env:
           PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
