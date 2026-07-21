@@ -31,6 +31,9 @@ concurrency:
 jobs:
   macos-self-hosted:
     name: macOS — self-hosted (Intel Mac Pro)
+    # SECURITY: Before public visibility, restrict the organization runner
+    # group to fianchettochess/BoardKit/.github/workflows/ci.yml@refs/heads/main.
+    # These generic labels route jobs; they are not an authorization boundary.
     # Defense in depth: never schedule this job for a future non-manual trigger.
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, macOS]
