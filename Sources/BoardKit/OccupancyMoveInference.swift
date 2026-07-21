@@ -6,18 +6,17 @@ import Foundation
 // SquareOffMoveInference / SquareOffInferenceFeedback). Pure state machine:
 // the caller owns the game and validates candidates against the legal-move list.
 
-/// Feedback emitted by the move-inference state machine. Marked `nonisolated`
-/// so its `Equatable` conformance is usable from non-main-actor contexts (an
-/// app with default main-actor isolation would otherwise make the synthesized
-/// conformance unusable from tests).
-public nonisolated enum OccupancyInferenceFeedback: Sendable {
+/// Feedback emitted by the move-inference state machine. This package target
+/// has no default global actor, so the enum and its `Equatable` conformance are
+/// available from non-main-actor contexts.
+public enum OccupancyInferenceFeedback: Sendable {
     case pieceLifted(square: String)
     case moveCandidates(_ uciMoves: [String])
     case noChange
 }
 
 extension OccupancyInferenceFeedback: Equatable {
-    public nonisolated static func == (lhs: OccupancyInferenceFeedback, rhs: OccupancyInferenceFeedback) -> Bool {
+    public static func == (lhs: OccupancyInferenceFeedback, rhs: OccupancyInferenceFeedback) -> Bool {
         switch (lhs, rhs) {
         case let (.pieceLifted(a), .pieceLifted(b)): return a == b
         case let (.moveCandidates(a), .moveCandidates(b)): return a == b

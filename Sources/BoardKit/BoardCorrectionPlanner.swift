@@ -27,8 +27,8 @@ import ChessCore
 public enum BoardCorrectionPlanner {
 
     /// A single physical action the user should take to re-sync one square.
-    public nonisolated struct Correction: Equatable, Sendable, Hashable {
-        public nonisolated enum Kind: Equatable, Sendable, Hashable {
+    public struct Correction: Equatable, Sendable, Hashable {
+        public enum Kind: Equatable, Sendable, Hashable {
             /// The expected square holds a piece but the board reports it empty —
             /// the user must place `piece` on `square`. `from` is set when a stray
             /// piece elsewhere can supply it (a relocate), nil when the piece must

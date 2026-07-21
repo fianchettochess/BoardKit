@@ -34,7 +34,7 @@ let events = replay.runSync()
 public enum ReplayTransport<A: BoardAdapter>.Step: Sendable {
     case bytes(Data)              // push through adapter.feed(bytes:)
     case lifecycle(BoardEvent)    // inject directly into the output stream
-    case delay(TimeInterval)      // recorded but NOT enforced in runSync()
+    case delay(TimeInterval)      // recorded but not enforced in runSync()
 }
 ```
 
@@ -63,7 +63,7 @@ XCTAssertEqual(perStep[1], [.identitySnapshot(expectedPieces)])
 ```
 
 !!! note "Conformance"
-    `ReplayTransport` does NOT conform to `BoardTransport`. It intentionally
+    `ReplayTransport` does not conform to `BoardTransport`. It intentionally
     omits the BLE scan/connect surface that requires a platform import. It
     replaces only the byte-injection path.
 
@@ -163,7 +163,7 @@ await sim.reset(to: endgamePosition)
 | Castling (e1g1) | lift(e1, K), lift(h1, R), place(f1, R), place(g1, K) |
 | Promotion (e7e8q) | lift(e7, pawn), place(e8, queen) |
 
-When capabilities do NOT include `.pieceIdentity`, all `piece` fields are `nil`.
+When capabilities do not include `.pieceIdentity`, all `piece` fields are `nil`.
 
 ---
 

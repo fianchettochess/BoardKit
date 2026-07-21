@@ -11,9 +11,9 @@ import ChessCore
 /// Lives outside the view so the transition logic is unit-testable
 /// without standing up SwiftUI. Board-agnostic kernel — renamed from
 /// SquareOffSyncGate on 2026-07-03.
-public nonisolated struct BoardSyncGate: Sendable {
+public struct BoardSyncGate: Sendable {
 
-    public nonisolated enum Action: Equatable, Sendable {
+    public enum Action: Equatable, Sendable {
         case none
         case pauseClock
         case resumeClock(color: PieceColor)

@@ -66,7 +66,7 @@ never branch on this case.
 **`.promotionPick(piece:)`** — a board-side promotion piece pick (ChessUp
 `0x97` frame). When the board reports the promotion piece this way, the
 session can auto-resolve the promotion picker without asking the human.
-Session code must handle this case and must NOT treat it like `.raw`.
+Session code must handle this case and must not treat it like `.raw`.
 
 **`.storedGameImported(moves:sanMoves:isComplete:)`** — one game
 reconstructed from a board's internal storage during a
@@ -100,7 +100,7 @@ public enum BoardCommand: Sendable {
 | `.startSession` | Begin a new game / enter active-play state |
 | `.requestState` | Request a full occupancy or identity snapshot |
 | `.indicateSquares([String], style:)` | Illuminate squares with the given style |
-| `.executeMove(uci:)` | Ask a motorised board to physically play a move |
+| `.executeMove(uci:)` | Ask a motorized board to physically play a move |
 | `.requestStoredGames` | Begin importing the games stored on the board's internal flash (`.gameArchive` boards); each game surfaces as `.storedGameImported` |
 | `.custom(Data)` | Adapter-specific payload not yet in the shared vocabulary |
 
@@ -112,7 +112,7 @@ public enum BoardCommand: Sendable {
 ## LEDStyle
 
 `LEDStyle` is an advisory illumination hint for `.indicateSquares`. Adapters
-that support only a single LED colour treat all non-`.highlight` values as
+that support only a single LED color treat all non-`.highlight` values as
 `.highlight`.
 
 ```swift
@@ -121,7 +121,7 @@ public enum LEDStyle: Sendable {
     case moveFrom           // source-square emphasis (green on Chessnut)
     case moveTo             // destination-square emphasis (yellow on Chessnut)
     case danger             // check/threat emphasis (red on Chessnut)
-    case custom(UInt8)      // board-specific colour index
+    case custom(UInt8)      // board-specific color index
 }
 ```
 
@@ -136,7 +136,7 @@ to activate.
 ```swift
 public struct BoardCapabilities: OptionSet, Sendable {
     public static let occupancySensing  // per-square lift/place
-    public static let pieceIdentity     // piece type+colour per square
+    public static let pieceIdentity     // piece type+color per square
     public static let perSquareLEDs     // individually addressable per-square LEDs
     public static let moveIndication    // any move-highlight capability
     public static let motorised         // auto-move mechanism
@@ -152,16 +152,11 @@ public struct BoardCapabilities: OptionSet, Sendable {
 
 ### Capability matrix
 
-| Board | occupancy | identity | perSquareLEDs | moveIndication | motorised | battery | gameArchive |
-|---|---|---|---|---|---|---|---|
-| Square Off Pro / GKS | ✓ | | ✓ | ✓ | ✓ (GKS) | | |
-| Chessnut Air family | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ |
-| Chessnut Move | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-| DGT Pegasus | ✓ | | ✓ | ✓ | | ✓ | |
-| Millennium | ✓ | ✓ | | ✓ (9×9 corner) | | | |
-| Certabo | ✓ | ✓ | ✓ | ✓ | | | |
+See the canonical [hardware-status and capability tables](adapters.md#hardware-status),
+which distinguish implemented flags from hardware-tested scope and document
+runtime-dependent capabilities such as calibrated Certabo identity.
 
 !!! note "Millennium and `perSquareLEDs`"
     The Millennium board uses a 9×9 corner-LED grid rather than per-square LEDs.
-    It sets `.moveIndication` but NOT `.perSquareLEDs`. Always check `.perSquareLEDs`
+    It sets `.moveIndication` but not `.perSquareLEDs`. Always check `.perSquareLEDs`
     before sending granular LED commands.

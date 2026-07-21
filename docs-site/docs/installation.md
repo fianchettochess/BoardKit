@@ -1,9 +1,9 @@
 # Installation
 
 BoardKit is a Swift Package Manager library. Its only runtime dependency is
-[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT), which it pulls in
-automatically. No third-party networking, UI, or platform-specific libraries
-are required by the library targets.
+[ChessCore](https://github.com/fianchettochess/ChessCore) 0.7.2 or newer within
+the 0.7.x line (MIT), which it pulls in automatically. No third-party networking, UI, or
+platform-specific libraries are required by the library targets.
 
 ## Requirements
 
@@ -22,26 +22,17 @@ uses throwing `FileHandle` APIs (available since iOS 13.4 / macOS 10.15.4).
 
 ## Add the package
 
-### Local path dependency (recommended for monorepo setups)
+### Local ChessCore override
 
-BoardKit and ChessCore are sibling packages. Add both as path dependencies:
+BoardKit always declares the versioned ChessCore dependency so its identity
+does not change based on checkout layout. When developing both sibling
+packages together, override that dependency explicitly from the BoardKit
+checkout:
 
-```swift
-// Package.swift
-dependencies: [
-    .package(path: "../BoardKit"),
-    .package(path: "../ChessCore"),   // BoardKit's public API uses ChessCore types (Piece, Position, Move) — import ChessCore in files that name them
-],
-targets: [
-    .target(
-        name: "MyApp",
-        dependencies: [
-            .product(name: "BoardKit",        package: "BoardKit"),
-            .product(name: "ChessnutAdapter", package: "BoardKit"),
-            // Add other adapter products as needed.
-        ]
-    ),
-]
+```bash
+swift package edit ChessCore --path ../ChessCore
+# Return to the versioned dependency when finished:
+swift package unedit ChessCore
 ```
 
 ### Remote dependency

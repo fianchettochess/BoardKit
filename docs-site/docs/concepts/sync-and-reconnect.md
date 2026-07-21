@@ -15,7 +15,7 @@ on every change; the gate decides whether the clock should be paused or
 resumed and whether the entry-only haptic should fire.
 
 ```swift
-public nonisolated struct BoardSyncGate: Sendable {
+public struct BoardSyncGate: Sendable {
     public private(set) var clockWasRunningBeforeDesync: Bool
     public private(set) var pausedActiveColor: PieceColor
     public private(set) var isDesynced: Bool

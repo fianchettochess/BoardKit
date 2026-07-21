@@ -41,7 +41,7 @@ connecting and routes events through the appropriate kernel path
 The adapter accumulates partial frame bytes across calls (framing is
 stateful). Emits events only when a complete frame boundary is reached.
 Must be called serially — concurrent calls to a `mutating` function on a
-value type are undefined behaviour. An empty `Data` is safe (no-op).
+value type are undefined behavior. An empty `Data` is safe (no-op).
 
 ### `encode(_:)`
 

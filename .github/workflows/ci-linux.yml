@@ -21,24 +21,15 @@ concurrency:
 
 jobs:
   linux:
-    name: Linux (ubuntu-latest) — swift test
+    name: Linux — Swift ${{ matrix.swift }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: swift:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ['6.0', 'latest']
+    container: swift:${{ matrix.swift }}
     steps:
-      # BoardKit's Package.swift resolves ChessCore from ../ChessCore when the
-      # sibling is checked out. The optional PAT supports the pre-publication
-      # transition; the built-in read-only token is sufficient once public.
-      - name: Checkout ChessCore (sibling)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: fianchettochess/ChessCore
-          path: ChessCore
-          # Fork PRs do not receive repository secrets. Once ChessCore is
-          # public, github.token is the safe read-only fallback for those PRs.
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
-          persist-credentials: false
-
       - name: Checkout BoardKit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

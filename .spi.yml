@@ -1,0 +1,16 @@
+# Swift Package Index manifest. Generate hosted symbol documentation for every
+# public library product; the boardkit-emulator executable is intentionally
+# excluded.
+# Schema: https://github.com/SwiftPackageIndex/SPIManifest
+version: 1
+builder:
+  configs:
+    - documentation_targets:
+        - BoardKit
+        - SquareOffAdapter
+        - ChessnutAdapter
+        - PegasusAdapter
+        - MillenniumAdapter
+        - CertaboAdapter
+        - ChessUpAdapter
+        - BoardKitTestSupport

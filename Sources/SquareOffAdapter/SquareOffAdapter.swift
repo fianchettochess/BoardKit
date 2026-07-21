@@ -6,7 +6,7 @@ import BoardKit
 //
 // Covers Square Off Pro, Kingdom Set (GKS), and Gen-1 motorised boards.
 //
-// HARDWARE STATUS: Battle-tested in-app (Fianchetto iOS/Android production).
+// HARDWARE STATUS: Hardware-tested in-app (Fianchetto iOS/Android production).
 // Protocol codec migrated from the FianchettoKit SquareOffTransport on
 // 2026-07-03; field-verified against physical Square Off Pro and GKS hardware.
 // executeMove quarantined (motor semantics unverified); all other BoardAdapter
@@ -38,15 +38,15 @@ import BoardKit
 ///   - `.executeMove(uci:)` → **nil** with a quarantine warning. The `sendMove` ("0#<uci>*")
 ///     and `sendMoveWithComma` ("24#<from>,<to>*") commands are reverse-engineered
 ///     with unknown semantics. Their wire effect on motorised Square Off GKS units
-///     has NOT been hardware-verified. Returning nil causes the transport to silently
+///     has not been hardware-verified. Returning nil causes the transport to silently
 ///     skip the command, preventing an inadvertent motor trigger during app development.
-///     Remove this guard only after physical-board verification confirms safe behaviour.
+///     Remove this guard only after physical-board verification confirms safe behavior.
 ///   - `.custom(data)` → `data` verbatim
 ///
 /// **handshakeCommands(isReconnect:)** encodes the safe reconnect rule:
 ///   - First connect:  `[(.startSession, 250ms), (.requestState, 150ms)]`
 ///     (the 250ms is the hardware-proven link-settle delay both app
-///     transports used as `asyncAfter(0.25)` — do NOT "optimize" it away)
+///     transports used as `asyncAfter(0.25)`; do not "optimize" it away)
 ///   - Reconnect:      `[(.requestState, 250ms)]`  (NO startNewGame — board state preserved)
 ///
 /// ## Capabilities
@@ -100,7 +100,7 @@ public struct SquareOffAdapter: BoardAdapter {
             // causing an unexpected physical board-state change during a game.
             // Sessions currently use setLeds for outbound move indication (confirmed
             // LED effect only). Returning nil causes the transport to silently skip
-            // this command until hardware-verified behaviour is documented.
+            // this command until hardware-verified behavior is documented.
             return nil
         case .requestStoredGames:
             // Square Off has no on-device game archive.
@@ -113,7 +113,7 @@ public struct SquareOffAdapter: BoardAdapter {
     public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Mid-game reconnect: request the current board state ONLY so the session
-            // can reconcile the occupancy snapshot. Do NOT send startSession (startNewGame)
+            // can reconcile the occupancy snapshot. Do not send startSession (startNewGame)
             // — the board would reset its game state, disrupting the in-progress game.
             // Hardware-verified safe reconnect rule, shipped 2026-07-03.
             return [(.requestState, 0.25)] // 250ms

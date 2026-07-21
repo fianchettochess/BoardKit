@@ -6,35 +6,29 @@
 // (BoardExecutionGate, OccupancyMoveInference, BoardDiffResolver,
 // BoardCorrectionPlanner, BoardSyncGate, BoardReconnectPolicy, ChessBoardGeometry).
 //
-// Three-target design (as of 2026-07-03 extraction pass):
+// Product design:
 //   BoardKit          — seam protocols (BoardEvent/Command/Capabilities/Adapter/
 //                       Transport) + shared board-agnostic kernels (gate, inference,
 //                       diff resolver, correction planner, geometry, reconnect policy,
 //                       sync gate).
-//   SquareOffAdapter  — Square Off wire codec (SquareOffMessage/Framer/Parser/Event/
-//                       Command) + SquareOffAdapter: BoardAdapter implementation.
-//   ChessnutAdapter   — Chessnut Air-family adapter.
+//   Adapter libraries — Square Off, Chessnut, DGT Pegasus, Millennium, Certabo,
+//                       and ChessUp wire codecs and BoardAdapter implementations.
 //   BoardKitTestSupport — ReplayTransport + SimulatedBoard harness.
+//   boardkit-emulator — macOS BLE peripheral emulator for integration testing.
 //
 // BoardKit depends on ChessCore (permissive MIT floor) and carries the same
 // generous community deployment floor. No SwiftUI, CoreBluetooth, SkipFuse,
-// or Foundation-networking in any library target.
-import Foundation
+// or networking code in any library target.
 import PackageDescription
 
-// Local Fianchetto development keeps ChessCore next to BoardKit, while a
-// standalone/remote BoardKit checkout does not. The old unconditional
-// `../ChessCore` dependency made every remote BoardKit release unusable unless
-// consumers happened to reproduce the author's folder layout. Prefer the
-// sibling only when it actually exists; otherwise resolve the public package.
-let packageDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-let siblingChessCoreManifest = packageDirectory
-    .deletingLastPathComponent()
-    .appendingPathComponent("ChessCore/Package.swift")
-let chessCoreDependency: Package.Dependency = FileManager.default.fileExists(
-    atPath: siblingChessCoreManifest.path
-) ? .package(path: "../ChessCore")
-  : .package(url: "https://github.com/fianchettochess/ChessCore.git", from: "0.3.0")
+// Keep dependency identity deterministic for standalone consumers and SwiftPM's
+// own side-by-side checkout layout. Coordinated local development can override
+// this dependency explicitly with:
+//   swift package edit ChessCore --path ../ChessCore
+let chessCoreDependency: Package.Dependency = .package(
+    url: "https://github.com/fianchettochess/ChessCore.git",
+    .upToNextMinor(from: "0.7.2")
+)
 
 let package = Package(
     name: "BoardKit",
@@ -92,8 +86,8 @@ let package = Package(
         .executable(name: "boardkit-emulator", targets: ["BoardKitEmulator"]),
     ],
     dependencies: [
-        // Local sibling for coordinated development; versioned remote package
-        // for standalone clones and normal SwiftPM consumers.
+        // Versioned remote dependency; use SwiftPM edit mode for a local
+        // ChessCore checkout during coordinated development.
         chessCoreDependency,
         // DocC for documentation generation only.
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),

@@ -23,10 +23,12 @@ work with any physical board.
 
 **No library target contains BLE or USB-HID code.** Transport implementations
 live in the consuming app targets (they import CoreBluetooth or SkipFuse);
-BoardKit's library targets import only
-[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT) and
-Foundation. The one exception is the `boardkit-emulator` executable, whose
-CoreBluetooth peripheral code is guarded by
+BoardKit's library targets depend only on
+[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT) and system
+frameworks. They use Foundation throughout and conditionally use Apple's `os`
+module for Square Off logging; none contains UI, Bluetooth, or networking
+code. The `boardkit-emulator` executable is the only CoreBluetooth exception,
+and its peripheral code is guarded by
 `#if os(macOS) && canImport(CoreBluetooth)` and never enters the library
 graph.
 
@@ -104,9 +106,9 @@ move an adapter into the hardware-tested group; see the contribution flow below.
 ### Per-board status notes
 
 - **Square Off Pro / Kingdom Set (GKS):** Field-proven in the Fianchetto iOS
-  and Android production apps. All BLE codec paths (fieldUpdate, boardState,
-  setLeds, handshake/reconnect) are hardware-verified. The `executeMove` motor
-  command is quarantined pending confirmed wire semantics.
+  and Android production apps. The connection, field-update, board-state, LED,
+  handshake, and reconnect paths are hardware-verified. The `executeMove`
+  motor command is quarantined pending confirmed wire semantics.
 
 - **Chessnut Air family (Air, Air+, Pro, Go):** Protocol-verified against the
   official Chessnut docs, NSStudent/EasyLinkSwiftSDK (MIT, `1b971059`), and
@@ -132,7 +134,8 @@ move an adapter into the hardware-tested group; see the contribution flow below.
   [PegasusChessComChromeExtension at `5fe10bdc`](https://github.com/EdNekebno/PegasusChessComChromeExtension/blob/5fe10bdcf00827886d1ad8702278abe65680a2ee/content_script.js)
   at the pinned revisions. That public duplication does not establish official
   DGT authorization for general reuse. Deployments requiring authorization
-  should confirm their requirements with DGT and inject an appropriate value.
+  should confirm their requirements with DGT and inject an appropriate value
+  via `PegasusAdapter(devkey:)`.
   The codec and frame fixtures pass, but physical-board or BLE capture-log
   validation is still pending.
 
@@ -159,7 +162,8 @@ move an adapter into the hardware-tested group; see the contribution flow below.
   The transport layer and frame formats (0x67/0xB1/0xB8/0xBB/0xA3) were
   corroborated by a ChessUp 2
   hardware session (2026-07-07) — CU2 and gen-1 share an identical NUS GATT
-  profile, and every opcode exercised so far matches the gen-1 pins. Gen-1
+  profile, and every opcode exercised so far matches the pinned gen-1 protocol
+  references. The gen-1
   unit itself remains untested.
 
 - **ChessUp 2:** Hardware-verified on July 7, 2026, with a physical ChessUp 2
@@ -191,7 +195,7 @@ move an adapter into the hardware-tested group; see the contribution flow below.
   **Full-game validation (July 2026):** A complete 90-ply over-the-board game was
   harvested from physical hardware — an Android live BLE HCI sniff (btsnoop) and
   an iOS PacketLogger session — and decoded **90/90 moves with zero mismatches**
-  against the board app's own PGN export. This resolved the previously-pending
+  against the board app's own PGN export. This resolved the previously pending
   0xA3 frame shapes: castling is
   a single king-slide 0xA3 (no separate rook frame), promotion is a plain
   pawn-move 0xA3 immediately followed by a 0x97 board-side pick, capture is a
@@ -309,9 +313,19 @@ swift build
 swift test
 ```
 
-When `../ChessCore` exists, the manifest uses that sibling checkout for local
-development. Otherwise, it resolves the versioned remote dependency. Exercise
-the remote path from a standalone checkout before publishing a release.
+On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
+image through the same versioned ChessCore dependency path used by consumers.
+
+The manifest resolves the compatible ChessCore 0.7.x line, starting at 0.7.2,
+from GitHub so dependency identity remains stable for standalone consumers.
+For coordinated development with sibling checkouts, explicitly enable SwiftPM
+edit mode:
+
+```bash
+swift package edit ChessCore --path ../ChessCore
+# Return to the versioned dependency when finished:
+swift package unedit ChessCore
+```
 
 ## Releasing
 

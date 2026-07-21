@@ -14,7 +14,7 @@ public enum ChessBoardGeometry {
     /// physical board's frame can be translated into the app's frame.
     /// Returns nil for malformed input (the caller falls back to the
     /// original string so we never silently substitute a wrong square).
-    public nonisolated static func flippedSquare(_ square: String) -> String? {
+    public static func flippedSquare(_ square: String) -> String? {
         let chars = Array(square)
         guard chars.count == 2,
               let fileScalar = chars[0].asciiValue,
@@ -31,7 +31,7 @@ public enum ChessBoardGeometry {
 
     /// Convert a square like "e4" to the board's file-major occupancy index
     /// (a1=0, a2=1, …, a8=7, b1=8, … h8=63). Nil for malformed input.
-    public nonisolated static func boardOccupancyIndex(for square: String) -> Int? {
+    public static func boardOccupancyIndex(for square: String) -> Int? {
         let chars = Array(square)
         guard chars.count == 2,
               let fileScalar = chars[0].asciiValue,
@@ -47,7 +47,7 @@ public enum ChessBoardGeometry {
     /// Square names (a1..h8) whose occupancy disagrees between the app's
     /// expected `position` and the board's reported file-major `boardOccupancy`.
     /// Empty for a malformed snapshot.
-    public nonisolated static func mismatchedSquares(position: Position, boardOccupancy: [Bool]) -> [String] {
+    public static func mismatchedSquares(position: Position, boardOccupancy: [Bool]) -> [String] {
         guard boardOccupancy.count == 64 else { return [] }
         let files = Array("abcdefgh")
         var out: [String] = []

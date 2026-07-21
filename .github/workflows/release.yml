@@ -47,17 +47,6 @@ jobs:
     outputs:
       commit: ${{ steps.tag.outputs.commit }}
     steps:
-      # Keep this ref synchronized with the minimum ChessCore version in
-      # Package.swift. Testing the minimum prevents accidental API-floor drift.
-      - name: Checkout ChessCore 0.3.0 (supported minimum)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: fianchettochess/ChessCore
-          ref: '0.3.0'
-          path: ChessCore
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
-          persist-credentials: false
-
       - name: Checkout exact BoardKit tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -77,6 +66,15 @@ jobs:
           TAG_COMMIT="$(git rev-parse "${VERSION}^{commit}")"
           test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
           printf 'commit=%s\n' "$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+
+      # Keep this version synchronized with the lower bound in Package.swift.
+      # Pinning it here catches accidental API-floor drift while still using
+      # the same remote dependency path as a standalone consumer.
+      - name: Resolve ChessCore 0.7.2 (supported minimum)
+        working-directory: BoardKit
+        run: |
+          swift package resolve
+          swift package resolve --version 0.7.2 ChessCore
 
       - name: Build
         working-directory: BoardKit

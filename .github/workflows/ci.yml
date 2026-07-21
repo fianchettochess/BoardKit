@@ -3,13 +3,9 @@ name: CI
 # Build + test BoardKit on macOS (self-hosted Intel Mac Pro) and Linux
 # (GitHub-hosted ubuntu-latest).
 #
-# SIBLING-CHECKOUT PATTERN: BoardKit's Package.swift detects ../ChessCore at
-# resolve time — if the sibling directory exists it uses the local path,
-# otherwise it falls back to the versioned remote (github.com/fianchettochess/ChessCore).
-# Both jobs clone ChessCore as a sibling explicitly so that the
-# sibling-detection path resolves consistently. SIBLINGS_CHECKOUT_PAT preserves
-# access before ChessCore becomes public; github.token is the read-only fallback
-# after the visibility change.
+# BoardKit resolves its versioned ChessCore dependency exactly as a standalone
+# public consumer does. Coordinated local development uses SwiftPM edit mode;
+# CI intentionally exercises the remote dependency path.
 #
 # ARCH NOTE: the self-hosted runner is an Intel Mac Pro (x86_64).  BoardKit's
 # library targets are platform-free.  The boardkit-emulator executable uses
@@ -40,21 +36,6 @@ jobs:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 45
     steps:
-      # Checkout ChessCore as a sibling so Package.swift's dynamic path
-      # detection finds it at ../ChessCore relative to the BoardKit checkout.
-      # The optional PAT supports the pre-publication transition. Once ChessCore
-      # is public, the built-in read-only token is sufficient.
-      - name: Checkout ChessCore (sibling)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: fianchettochess/ChessCore
-          path: ChessCore
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
-          persist-credentials: false
-          # The trusted runner owns its workspace; do not copy its account's
-          # global .gitconfig into the Actions log.
-          set-safe-directory: false
-
       - name: Checkout BoardKit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -76,15 +57,6 @@ jobs:
     timeout-minutes: 30
     container: swift:latest
     steps:
-      # Same sibling-checkout pattern as the macOS job.
-      - name: Checkout ChessCore (sibling)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: fianchettochess/ChessCore
-          path: ChessCore
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
-          persist-credentials: false
-
       - name: Checkout BoardKit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

@@ -2,20 +2,47 @@
 
 Each concrete adapter is a `struct` conforming to `BoardAdapter`. It owns
 wire framing, protocol parsing, command encoding, handshake sequencing, and
-orientation flip for one board family. All adapters import only `BoardKit` and
-`ChessCore` — no Bluetooth, no networking.
+orientation flip for one board family. Adapters depend only on `BoardKit`,
+`ChessCore`, and system frameworks; Square Off conditionally uses Apple's `os`
+module for logging. No adapter contains Bluetooth or networking code.
 
 ## Hardware status
 
-| Adapter | Status | occupancy | identity | perSquareLEDs | motorised | battery |
-|---|---|---|---|---|---|---|
-| `SquareOffAdapter` | **Battle-tested in-app** | ✓ | | ✓ | ✓ (GKS, quarantined) | |
-| `ChessnutAdapter` (Air family) | **Protocol-verified; Go stored-game import exercised on real hardware (2026-07)** | ✓ | ✓ | ✓ | | ✓ |
-| `ChessnutMoveAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `PegasusAdapter` | Protocol-pinned; hardware-unverified | ✓ | | ✓ | | ✓ |
-| `MillenniumAdapter` | Protocol-pinned; exercised on a physical board (move-decode misread found + fixed) | ✓ | ✓ | | | |
-| `CertaboAdapter` | Protocol-pinned; hardware-unverified | ✓ | ✓ | ✓ | | |
-| `ChessUpAdapter` (gen-1 / CU2) | **Hardware-verified (full 90-ply game, Android + iOS) 2026-07** | ✓ | | | | |
+A checkmark means the adapter implements and declares the corresponding
+`BoardCapabilities` flag. It does not mean that every listed capability has
+been exercised on physical hardware. A blank means the flag is not declared.
+The `motorised` spelling is retained because it is an exact API identifier.
+
+### Hardware-tested: works within the verified scope
+
+These adapters have at least one hardware-tested path. The verified scope and
+known limitations are explicit because other implemented capabilities may
+remain untested.
+
+| Board | Hardware-verified scope | Known limitations | `.occupancySensing` | `.pieceIdentity` | `.perSquareLEDs` | `.moveIndication` | `.motorised` | `.batteryReporting` | `.perPieceTracking` | `.gameArchive` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Square Off Pro / Kingdom Set (GKS) | Production use on iOS and Android covers connection, handshake and reconnect, field updates, board state, and LEDs. | The `executeMove` motor command remains quarantined; `.motorised` is not declared. | ✓ | | ✓ | ✓ | | | | |
+| Chessnut Go | Onboard stored-game import reconstructed completed games from a physical board in July 2026. | Only the archive/import path is hardware-tested; broader live play and the remaining capabilities are not. | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Millennium (BLE/USB) | Live move decoding was exercised on a physical board, exposing a misread that was reproduced and fixed. | Validation covers one board and firmware path; broader firmware variants and the full command surface remain untested. | ✓ | ✓ | | ✓ | | | | |
+| ChessUp 2 | A complete 90-ply live game decoded 90/90 with zero mismatches on Android and iOS; phoneOTB session setup and acknowledgments were also verified. | The `0x99` move-indication command, `0xFD` occupancy stream, and `0x66` FEN load remain untested. Battery percentage is readable from the standard service, but the adapter does not declare `.batteryReporting`. | ✓ | | | ✓ | | | | |
+
+### Should work but untested on target hardware
+
+These adapters implement the documented paths and pass their checked-in frame
+and codec fixtures, but they have not been exercised on the named target
+hardware.
+
+| Board | Verification basis | Known limitations | `.occupancySensing` | `.pieceIdentity` | `.perSquareLEDs` | `.moveIndication` | `.motorised` | `.batteryReporting` | `.perPieceTracking` | `.gameArchive` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Chessnut Air | Official documentation and pinned MIT implementations; all golden-frame fixtures pass. | No physical-board or BLE capture-log validation. | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Air+ | Official documentation and pinned MIT implementations; all golden-frame fixtures pass. | No physical-board or BLE capture-log validation. | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Pro | Official documentation and pinned MIT implementations; all golden-frame fixtures pass. | No physical-board or BLE capture-log validation. | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| Chessnut Move | Official protocol documentation with a pinned MIT cross-check; all golden-frame fixtures pass. | No physical-board or BLE capture-log validation. | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| DGT Pegasus | Pinned public implementations and protocol references; all frame fixtures pass. | No physical-board or BLE capture-log validation. The developer-key authorization context is documented in the adapter notes. | ✓ | | ✓ | ✓ | | ✓ | | |
+| Certabo (classic LED) | A pinned MIT implementation and locally constructed protocol regressions. | No physical-board or USB/Bluetooth capture-log validation; identity requires calibration. | ✓ | ✓ after calibration | ✓ | ✓ | | | | |
+| Certabo Spectrum RGB | A pinned MIT implementation and locally constructed protocol regressions. | No physical-board or USB/Bluetooth capture-log validation; identity requires calibration, and the 9×9 corner grid does not provide per-square LEDs. | ✓ | ✓ after calibration | | ✓ | | | | |
+| Tabutronic Sentio | A pinned MIT implementation and locally constructed protocol regressions. | No physical-board or USB/Bluetooth capture-log validation. | ✓ | | ✓ | ✓ | | | | |
+| ChessUp (gen-1) | Pinned protocol references; its shared GATT transport and exercised frame formats were corroborated indirectly on ChessUp 2. | No ChessUp gen-1 unit has been tested. | ✓ | | | ✓ | | | | |
 
 !!! success "ChessUp 2 — hardware-verified (full 90-ply game, Android + iOS, 2026-07)"
     CU2 BLE transport is **identical to gen-1**: NUS service 6E400001-B5A3-F393-E0A9-E50E24DCCA9E,
@@ -40,11 +67,11 @@ orientation flip for one board family. All adapters import only `BoardKit` and
     moves to the host. `.startSession` now encodes this via `collectionSessionData()`.
 
     **Ack discipline (hardware-observed):** the board retransmits each 0xA3 until the host
-    writes a 0x21 ack; an unacked flood destabilised the BLE link in testing. 0x97
+    writes a 0x21 ack; an unacked flood destabilized the BLE link in testing. 0x97
     board-side promotions require 0x23. The adapter queues both internally —
     `takePendingResponses()` drains them; the transport need not inspect raw frames.
 
-    **Still pending (honest):** 0x99 move-indication LEDs on CU2; 0xFD occupancy stream
+    **Remaining hardware validation:** 0x99 move-indication LEDs on CU2; 0xFD occupancy stream
     (0x50 enable); 0x66 FEN-load; Android `ChessUpBleManager.kt`; gen-1 physical hardware
     itself untested (but CU2 corroborates the gen-1-pinned transport and frame formats).
 
@@ -53,11 +80,11 @@ orientation flip for one board family. All adapters import only `BoardKit` and
 ## SquareOffAdapter
 
 Square Off Pro and Kingdom Set (GKS). Field-proven in the Fianchetto iOS and
-Android production apps. All BLE codec paths (fieldUpdate, boardState, setLeds,
-handshake/reconnect) are hardware-verified.
+Android production apps. The connection, field-update, board-state, LED,
+handshake, and reconnect paths are hardware-verified.
 
 The `executeMove` motor command is **quarantined** — its wire semantics may
-auto-move on motorised GKS boards and are not fully confirmed. The adapter
+auto-move on motorized GKS boards and are not fully confirmed. The adapter
 returns `nil` from `encode(.executeMove(uci:))` until the wire format is
 hardware-verified.
 
@@ -87,7 +114,7 @@ reconstructing completed games from the board's snapshot log); broader
 live-play field validation across the family is ongoing.
 
 Use `ChessnutGATT.isClassicProfile(name:)` to filter BLE scan results to this
-adapter. For the Chessnut Move (motorised board) see the
+adapter. For the Chessnut Move (motorized board), see the
 [ChessnutMoveAdapter](#chessnutmoveadapter) section below.
 
 ```swift
@@ -110,9 +137,9 @@ let ledCommand = adapter.encode(.indicateSquares(["e2", "e4"], style: .moveFrom)
 
 ## ChessnutMoveAdapter
 
-The Chessnut Move — a motorised board where 34 micro-robot pieces move
-autonomously. Shares all GATT UUIDs with the classic profile but adds
-4-colour LEDs, an auto-move command (opcode 0x42), and per-piece tracking
+The Chessnut Move is a motorized board where 34 micro-robot pieces move
+autonomously. It shares all GATT UUIDs with the classic profile but adds
+four-color LEDs, an auto-move command (opcode 0x42), and per-piece tracking
 (opcode 0x41/0x0B). Hardware-unverified; protocol-pinned against
 chessnutech/chess_move_api (official, facts only; re-derived independently)
 and NSStudent/EasyLinkSwiftSDK (MIT).
@@ -135,7 +162,7 @@ let events = adapter.feed(bytes: blePayload)
 let autoMoveCmd = ChessnutMoveAdapter.encodeAutoMove(identity: targetBoard, force: true)
 // 35-byte 0x42 frame — write to ChessnutGATT.commandWriteChar
 
-// 4-colour LED indication:
+// Four-color LED indication:
 let ledCmd = adapter.encode(.indicateSquares(["e2", "e4"], style: .moveFrom))
 // 34-byte 0x43 frame (green = .moveFrom, blue = .moveTo, red = .danger)
 
@@ -187,8 +214,8 @@ var adapter = PegasusAdapter()
 ## MillenniumAdapter
 
 Millennium chess boards (BLE and USB-HID). Piece identity via Hall sensors;
-9×9 corner-LED grid for move indication — the board uses `.moveIndication` but
-NOT `.perSquareLEDs`.
+9×9 corner-LED grid for move indication. The board uses `.moveIndication` but
+not `.perSquareLEDs`.
 
 Protocol-pinned against domschl/python-mchess (MIT) and alstrup/chesslink
 (MIT). Full codec implemented: MF1–MF7 golden fixtures pass, full-position
@@ -199,7 +226,7 @@ import MillenniumAdapter
 
 var adapter = MillenniumAdapter()
 // capabilities: [.occupancySensing, .pieceIdentity, .moveIndication]
-// Note: perSquareLEDs is NOT set — the board uses a 9×9 corner-LED grid.
+// Note: perSquareLEDs is not set; the board uses a 9×9 corner-LED grid.
 ```
 
 ---
@@ -219,7 +246,7 @@ import CertaboAdapter
 // Default (uncalibrated) — occupancy + LEDs only:
 var adapter = CertaboAdapter()
 // capabilities: [.occupancySensing, .moveIndication, .perSquareLEDs]
-// .pieceIdentity is NOT set until a calibrated RFID board is detected.
+// .pieceIdentity is not set until a calibrated RFID board is detected.
 
 // With calibration — enables piece identity:
 var calibratedAdapter = CertaboAdapter(calibration: myCalibration)
@@ -231,7 +258,7 @@ var calibratedAdapter = CertaboAdapter(calibration: myCalibration)
 !!! note "Dynamic capabilities"
     `CertaboAdapter` capabilities are dynamic. The default is
     `[.occupancySensing, .moveIndication, .perSquareLEDs]`. `.pieceIdentity`
-    is added only when an RFID board is detected AND a `CertaboCalibration` is
+    is added only when an RFID board is detected and a `CertaboCalibration` is
     provided to the adapter. `.perSquareLEDs` is dropped for Spectrum RGB
     boards (reported `D` status), leaving `.moveIndication` only — the same
     corner-LED-grid pattern as `MillenniumAdapter`.
@@ -262,19 +289,19 @@ import ChessUpAdapter
 
 var adapter = ChessUpAdapter()
 // capabilities: [.occupancySensing, .moveIndication]
-// Note: .perSquareLEDs is NOT set — the 0x99 command accepts only two squares
+// Note: .perSquareLEDs is not set; the 0x99 command accepts only two squares
 // and injects a remote-move intent, not free-form per-square illumination.
 // This follows the same Millennium precedent: move-indication without
 // per-square contract.
 
-// REQUIRED: start a phoneOTB session BEFORE requesting state.
+// Required: start a phoneOTB session before requesting state.
 // Without 0xB9 mode-5 the board never streams 0xA3 move frames.
 let handshake = adapter.handshakeCommands(isReconnect: false)
 // First connect:  [(.startSession, 0.0s), (.requestState, 0.15s)]
 //   .startSession encodes collectionSessionData() — 0xB9 phoneOTB frame
 // Reconnect only: [(.requestState, 0.25s)] — 250 ms link-settle; never re-sends 0xB9 (would reset board score)
 
-// REQUIRED: drain acks after every inbound feed() call.
+// Required: drain acks after every inbound feed() call.
 let events = adapter.feed(bytes: bleNotification)
 let acks = adapter.takePendingResponses()
 // Write each element of `acks` to ChessUpGATT.nusRX.
@@ -318,16 +345,17 @@ if ChessnutGATT.isClassicProfile(name: peripheral.name ?? "") {
 
 ---
 
-## Source attributions
+## Source attributions by adapter
 
 | Adapter | MIT implementation sources | Protocol/behavior references (other terms) |
 |---|---|---|
-| SquareOffAdapter | First-party reverse engineering | — |
-| ChessnutAdapter | NSStudent/EasyLinkSwiftSDK (MIT, `1b971059`); chessnutech/EasyLinkSDK (MIT, `4554d17b`) | chessnutech README |
-| PegasusAdapter | mono424/dgtdriver (MIT, Dart, `333b1d6b`) | EdNekebno/PegasusChessComChromeExtension (GPL-3.0, `5fe10bdc`); DGTCentaurMods/pegasus.py (GPL); DGT docs |
-| MillenniumAdapter | domschl/python-mchess (MIT, `74ccfd40`); alstrup/chesslink (MIT, `13b64273`) | Graham O'Neill readme |
-| CertaboAdapter | mono424/certabodriver (MIT, `d61997c6`) | Protocol/behavior references: CERTABO software (GPL), CERTABO/BT (no declared license), and other GPL drivers |
-| ChessUpAdapter | mono424/chessupdriver (MIT, 589d43ad) | chessup-pc (all rights reserved) |
+| SquareOffAdapter | First-party reverse engineering — no external driver | — |
+| ChessnutAdapter | NSStudent/EasyLinkSwiftSDK (MIT, `1b971059`); chessnutech/EasyLinkSDK (MIT, `4554d17b`) | chessnutech/Chessnut_eBoards README |
+| ChessnutMoveAdapter | NSStudent/EasyLinkSwiftSDK (MIT, `1b971059`, cross-check) | chessnutech/chess_move_api (no license — facts only, re-derived) |
+| PegasusAdapter | mono424/dgtdriver (MIT, Dart, `333b1d6b`) | EdNekebno/PegasusChessComChromeExtension (GPL-3.0, `5fe10bdc`); DGTCentaurMods/pegasus.py (GPL); Graham O'Neill ReadMe PDF; DGT Projects dgtbrd13.h |
+| MillenniumAdapter | domschl/python-mchess (MIT, `74ccfd40`); alstrup/chesslink (MIT, `13b64273`) | Graham O'Neill readme (proprietary — facts only) |
+| CertaboAdapter | mono424/certabodriver (MIT, `d61997c6`) | Protocol/behavior references: CERTABO software (GPL), CERTABO/BT (no declared license), haklein/certabo-lichess (GPL), gkalab/cer2nut (GPL) |
+| ChessUpAdapter | mono424/chessupdriver (MIT, commit 589d43ad) | atomice1/bluecheese (GPL/LGPL); Kevin-BryghtLabs/chessup-pc (all rights reserved) |
 
 GPL, AGPL, and license-less repositories are protocol research references. No
 third-party source files or fixture blobs from them are redistributed here. See
