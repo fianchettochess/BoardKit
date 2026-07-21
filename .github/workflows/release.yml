@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   validate:
     name: Validate version
@@ -54,6 +58,22 @@ jobs:
           path: BoardKit
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Configure private ChessCore access
+        env:
+          PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
+        run: |
+          if [[ -z "${PACKAGE_TOKEN}" ]]; then
+            echo "DOCS_PACKAGES_TOKEN is required while ChessCore is private" >&2
+            exit 1
+          fi
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${AUTH_HEADER}"
+          {
+            echo 'GIT_CONFIG_COUNT=1'
+            echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+            echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
+          } >> "${GITHUB_ENV}"
 
       - name: Verify checkout matches the tag
         id: tag

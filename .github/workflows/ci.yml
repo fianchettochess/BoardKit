@@ -43,6 +43,21 @@ jobs:
           persist-credentials: false
           set-safe-directory: false
 
+      - name: Configure private package access when available
+        shell: bash
+        env:
+          PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
+        run: |
+          if [[ -n "${PACKAGE_TOKEN}" ]]; then
+            AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
+            echo "::add-mask::${AUTH_HEADER}"
+            {
+              echo 'GIT_CONFIG_COUNT=1'
+              echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+              echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
+            } >> "${GITHUB_ENV}"
+          fi
+
       - name: Build
         working-directory: BoardKit
         run: swift build
@@ -62,6 +77,21 @@ jobs:
         with:
           path: BoardKit
           persist-credentials: false
+
+      - name: Configure private package access when available
+        shell: bash
+        env:
+          PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
+        run: |
+          if [[ -n "${PACKAGE_TOKEN}" ]]; then
+            AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
+            echo "::add-mask::${AUTH_HEADER}"
+            {
+              echo 'GIT_CONFIG_COUNT=1'
+              echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+              echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
+            } >> "${GITHUB_ENV}"
+          fi
 
       - name: Build
         working-directory: BoardKit
