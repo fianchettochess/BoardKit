@@ -1,21 +1,8 @@
 name: Release
 
-# Auto-publish a GitHub Release when a version tag (N.N.N) is pushed.
-#
-# BoardKit is a PURE-SWIFT source package — there is NO binary artifact to
-# build or attach, unlike the SwiftStockfish / SwiftReckless release workflows
-# (which compile an xcframework, upload it as the release asset, and rewrite
-# Package.swift to url:+checksum:). So this workflow simply promotes the pushed
-# tag to a GitHub Release with auto-generated notes. It never mutates `main` or
-# the tag; consumers resolve the source at the tag as-is.
-#
-# TRIGGERS: pushing a tag like `0.4.2` is the primary path. Manual
-# workflow_dispatch (with a `version` input naming an EXISTING tag) re-runs it
-# if a Release needs to be (re)created for a tag that is already pushed.
-#
-# Idempotent: if the Release already exists the job is a clean no-op, so a
-# re-pushed tag or a manual re-dispatch never collides (the failure mode that a
-# manual `gh release create` racing this workflow would otherwise cause).
+# Publish a GitHub Release for an existing immutable N.N.N tag. BoardKit is a
+# source package, so there is no binary asset. The exact tagged source is built
+# and tested before the separate write-enabled publication job can run.
 
 on:
   push:
@@ -24,35 +11,124 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Existing tag to (re)publish as a Release (e.g. 0.4.2)'
+        description: 'Existing numeric SemVer tag to publish (for example, 0.5.2)'
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    # No binary to build, so the cheap GitHub-hosted Linux runner is enough —
-    # the job only calls the GitHub Releases API.
+  validate:
+    name: Validate version
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Publish release
+      - name: Require strict numeric SemVer
+        id: version
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$VERSION" >/dev/null 2>&1; then
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "version must be strict numeric SemVer (N.N.N): $VERSION" >&2
+            exit 1
+          fi
+          printf 'value=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Build and test exact tag
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: swift:6.0
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      # Keep this ref synchronized with the minimum ChessCore version in
+      # Package.swift. Testing the minimum prevents accidental API-floor drift.
+      - name: Checkout ChessCore 0.3.0 (supported minimum)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: fianchettochess/ChessCore
+          ref: '0.3.0'
+          path: ChessCore
+          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Checkout exact BoardKit tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.version }}
+          path: BoardKit
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify checkout matches the tag
+        id: tag
+        working-directory: BoardKit
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet "refs/tags/$VERSION"
+          TAG_COMMIT="$(git rev-parse "${VERSION}^{commit}")"
+          test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
+          printf 'commit=%s\n' "$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: BoardKit
+        run: swift build
+
+      - name: Test
+        working-directory: BoardKit
+        run: swift test
+
+  release:
+    name: Publish release
+    needs: [validate, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish existing verified tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          VERIFIED_COMMIT: ${{ needs.verify.outputs.commit }}
+        run: |
+          set -euo pipefail
+          REF_JSON="$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION")"
+          REMOTE_TYPE="$(jq -r '.object.type' <<< "$REF_JSON")"
+          REMOTE_SHA="$(jq -r '.object.sha' <<< "$REF_JSON")"
+
+          # Annotated tags point to a tag object; peel it to the commit. Limit
+          # the loop defensively in case a malformed tag chain is encountered.
+          for _ in 1 2 3 4 5; do
+            if [[ "$REMOTE_TYPE" != "tag" ]]; then
+              break
+            fi
+            TAG_JSON="$(gh api "repos/$GH_REPO/git/tags/$REMOTE_SHA")"
+            REMOTE_TYPE="$(jq -r '.object.type' <<< "$TAG_JSON")"
+            REMOTE_SHA="$(jq -r '.object.sha' <<< "$TAG_JSON")"
+          done
+
+          if [[ "$REMOTE_TYPE" != "commit" || "$REMOTE_SHA" != "$VERIFIED_COMMIT" ]]; then
+            echo "tag $VERSION moved or no longer resolves to the verified commit" >&2
+            echo "verified: $VERIFIED_COMMIT; remote: $REMOTE_TYPE $REMOTE_SHA" >&2
+            exit 1
+          fi
+
+          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
             echo "release $VERSION already exists — nothing to do"
             exit 0
           fi
           gh release create "$VERSION" \
+            --repo "$GH_REPO" \
             --title "BoardKit $VERSION" \
             --verify-tag \
             --generate-notes

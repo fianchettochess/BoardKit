@@ -27,7 +27,8 @@ orientation flip for one board family. All adapters import only `BoardKit` and
     new-game/set-state; 0xA3 move frames (`[A3, sub, fromCol, fromRow, toCol, toRow]`).
     pieceCode in 0xB8 is type-only and color-agnostic (e.g., pawn = 0x00 for both sides).
     A complete 90-ply over-the-board game (Android btsnoop + iOS PacketLogger) decoded
-    **0/90** against the board app's own PGN export, resolving the 0xA3 frame shapes:
+    **90/90 moves with zero mismatches** against the board app's own PGN export,
+    resolving the 0xA3 frame shapes:
     castling is a single king-slide 0xA3, promotion is a plain pawn 0xA3 followed by a
     0x97 board-side pick, capture is a plain from→to 0xA3, and the 0x35 sub byte is
     constant across every move kind (not a discriminator). Locked by the `G1` golden
@@ -77,7 +78,7 @@ let handshake = adapter.handshakeCommands(isReconnect: false)
 
 Covers the Chessnut **Air**, **Air+**, **Pro**, and **Go** (the "classic profile" boards).
 Protocol-verified against the official Chessnut docs, NSStudent/EasyLinkSwiftSDK
-(MIT), and chessnutech/EasyLinkSDK (MIT).
+(MIT, `1b971059`), and chessnutech/EasyLinkSDK (MIT, `4554d17b`).
 
 The Air / Air+ / Pro / Go family uses the standard Chessnut BLE profile:
 all golden-frame fixtures from the pinned spec pass. The **Chessnut Go**
@@ -161,11 +162,17 @@ let batReq = ChessnutMoveAdapter.batteryRequestData()  // write 41 01 0C
 ## PegasusAdapter
 
 DGT Pegasus BLE board. Occupancy sensing + per-square LED move indication;
-no piece identity. Protocol-pinned against mono424/dgtdriver (MIT, Dart) as
-primary reference.
+no piece identity. Protocol-pinned against
+[mono424/dgtdriver at `333b1d6b`](https://github.com/mono424/dgtdriver/blob/333b1d6b151368168a395c43364cc27798920bfc/lib/DGTBoard.dart)
+(MIT, Dart) as the primary reference.
 
-The devkey bundled is the White Pawn / dgtdriver default. Integrators should
-obtain their own from DGT Projects for production deployments.
+At least two public community implementations publish the same default
+developer-key frame: the pinned dgtdriver source and
+[PegasusChessComChromeExtension at `5fe10bdc`](https://github.com/EdNekebno/PegasusChessComChromeExtension/blob/5fe10bdcf00827886d1ad8702278abe65680a2ee/content_script.js)
+at the pinned revisions. That public duplication does not establish official
+DGT authorization for general reuse. Deployments requiring authorization
+should confirm their requirements with DGT and inject an appropriate value via
+`PegasusAdapter(devkey:)`.
 
 ```swift
 import PegasusAdapter
@@ -203,8 +210,8 @@ Certabo RFID boards (USB serial, BT Classic RFCOMM, and BLE byte pipe) plus
 the Tabutronic Sentio occupancy family. Piece identity via calibrated RFID
 tags; per-square LEDs (classic LED) or 9×9 corner-LED grid (Spectrum RGB).
 
-Protocol-pinned against mono424/certabodriver (MIT); test vectors confirmed
-against gkalab/cer2nut fixtures.
+Protocol-pinned against mono424/certabodriver (MIT, `d61997c6`); behavior was
+cross-checked using locally constructed regressions informed by gkalab/cer2nut.
 
 ```swift
 import CertaboAdapter
@@ -313,17 +320,17 @@ if ChessnutGATT.isClassicProfile(name: peripheral.name ?? "") {
 
 ## Source attributions
 
-| Adapter | MIT sources (code-ok) | Facts-only sources (GPL / proprietary) |
+| Adapter | MIT implementation sources | Protocol/behavior references (other terms) |
 |---|---|---|
 | SquareOffAdapter | First-party reverse engineering | — |
-| ChessnutAdapter | NSStudent/EasyLinkSwiftSDK (MIT); chessnutech/EasyLinkSDK (MIT) | chessnutech README |
-| PegasusAdapter | mono424/dgtdriver (MIT, Dart) | DGTCentaurMods/pegasus.py (GPL); DGT docs |
-| MillenniumAdapter | domschl/python-mchess (MIT); alstrup/chesslink (MIT) | Graham O'Neill readme |
-| CertaboAdapter | mono424/certabodriver (MIT) | Various GPL drivers (facts only) |
+| ChessnutAdapter | NSStudent/EasyLinkSwiftSDK (MIT, `1b971059`); chessnutech/EasyLinkSDK (MIT, `4554d17b`) | chessnutech README |
+| PegasusAdapter | mono424/dgtdriver (MIT, Dart, `333b1d6b`) | EdNekebno/PegasusChessComChromeExtension (GPL-3.0, `5fe10bdc`); DGTCentaurMods/pegasus.py (GPL); DGT docs |
+| MillenniumAdapter | domschl/python-mchess (MIT, `74ccfd40`); alstrup/chesslink (MIT, `13b64273`) | Graham O'Neill readme |
+| CertaboAdapter | mono424/certabodriver (MIT, `d61997c6`) | Protocol/behavior references: CERTABO software (GPL), CERTABO/BT (no declared license), and other GPL drivers |
 | ChessUpAdapter | mono424/chessupdriver (MIT, 589d43ad) | chessup-pc (all rights reserved) |
 
-GPL, AGPL, and license-less repos are **facts only** — protocol constants and
-frame layouts may be learned from them but no code structure is copied. See
+GPL, AGPL, and license-less repositories are protocol research references. No
+third-party source files or fixture blobs from them are redistributed here. See
 per-adapter file headers for specific source attribution tags.
 
 ---
@@ -336,12 +343,15 @@ hardware-unverified" to "hardware-verified", submit a capture log in the
 
 1. Capture a BLE session covering: initial connection, several moves, battery
    request (where available).
-2. Convert to `.replay` format using `tshark` (see the README for the
+2. Remove device addresses and UUIDs, serial numbers, names, pairing material,
+   local paths, account data, and unrelated traffic. Do not submit the raw
+   PacketLogger, btsnoop, pcap, phone, or application log.
+3. Convert the minimal protocol bytes to `.replay` format using `tshark` (see the README for the
    one-liner).
-3. Save under `Tests/Fixtures/<board-name>.replay`. `Tests/Fixtures/` does
+4. Save under `Tests/Fixtures/<board-name>.replay`. `Tests/Fixtures/` does
    not exist yet — create it with your first fixture and load it in the test
    via a `#filePath`-relative path (the test target declares no SwiftPM
    resources), or follow the existing `Captures/` convention.
-4. Add a test in the matching `*AdapterTests.swift` that loads the fixture
+5. Add a test in the matching `*AdapterTests.swift` that loads the fixture
    via `ReplayScript.parse(text:)` and asserts the resulting events.
-5. Open a PR. `swift test` must pass before merge.
+6. Open a PR. `swift test` must pass before merge.

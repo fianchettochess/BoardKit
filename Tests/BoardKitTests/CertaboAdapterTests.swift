@@ -1,10 +1,11 @@
 // Certabo adapter tests — every golden fixture from the pinned spec, plus
 // calibration, uncalibrated flow, SimulatedBoard round-trips, framing edge
-// cases, rotation, and cer2nut wrapped-RFID golden fixtures.
+// cases, rotation, and cer2nut-informed wrapped-RFID regressions.
 //
 // Fixture labels match the pinned spec (F1–F7).
-// CER2NUT fixture labels match the cer2nut CertaboParser test names (facts-only
-// use — no code structure copied from gkalab/cer2nut, GPL-3.0).
+// CER2NUT labels identify the gkalab/cer2nut (GPL-3.0) behavior reference.
+// The helpers and test data here are locally constructed; no upstream source
+// file or fixture blob is redistributed.
 
 import Testing
 import Foundation
@@ -32,7 +33,7 @@ private func rfidFrameData(_ tags: [CertaboTagID]) -> Data {
 /// reconstruct token "44" by concatenating adjacent byte fragments.
 /// Frame is terminated by `\r\n`; the accumulator strips bare-LF and joins.
 ///
-/// [CER2NUT] wire-format facts; no code structure copied.
+/// Locally constructs the wrapped-wire behavior described by [CER2NUT].
 private func wrappedRfidFrameData(_ tags: [CertaboTagID], wrapEvery: Int = 65) -> Data {
     precondition(tags.count == 64)
     let tokens = tags.flatMap { [$0.b0, $0.b1, $0.b2, $0.b3, $0.b4].map { "\($0)" } }
@@ -985,11 +986,12 @@ private func standardStartTags() -> [CertaboTagID] {
     #expect(snaps.count == 2, "Two frames in one feed must produce two snapshots")
 }
 
-// MARK: - cer2nut wrapped-RFID golden fixtures
+// MARK: - cer2nut-informed wrapped-RFID regressions
 
 // These fixtures verify that the scanner handles cer2nut-style RFID frames
 // that wrap with bare-LF after ~65 chars, even mid-token.
-// Protocol facts sourced from gkalab/cer2nut (GPL-3.0); no code structure copied.
+// Behavior reference: gkalab/cer2nut (GPL-3.0). These frames are constructed by
+// the helpers above; no upstream source file or fixture blob is redistributed.
 
 /// [CER2NUT] hasPieceRecognitionAndTranslateAreCalledOnce:
 /// A single wrapped RFID frame parses identically to its single-line equivalent.

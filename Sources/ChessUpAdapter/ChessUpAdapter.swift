@@ -25,8 +25,9 @@ import BoardKit
 //
 // FULL-GAME WIRE CAPTURE (2026-07-16): a complete 90-ply OTB game harvested
 //     from physical hardware — Android live BLE HCI sniff (btsnoop) + an iOS
-//     PacketLogger session — decoded 0/90 against the board app's own PGN
-//     export. This RESOLVES the formerly-pending 0xA3 shapes and confirms:
+//     PacketLogger session — decoded all 90 moves with zero mismatches against
+//     the board app's own PGN export. This resolves the formerly-pending 0xA3
+//     shapes and confirms:
 //       • castling → a single king-slide 0xA3 (e1g1/e8g8); no separate rook
 //         frame; occupancy inference completes the rook (unchanged handling).
 //       • promotion → a plain pawn-move 0xA3 to the last rank, immediately
@@ -470,7 +471,9 @@ public struct ChessUpAdapter: BoardAdapter {
     ///   - whiteType: 0=human, 1=AI.
     ///   - whiteLevel: AI difficulty 1–30 or human assistance level 1–6.
     ///   - whiteLock: Button-lock 0=off, 1=on.
-    ///   - blackType / blackLevel / blackLock: Same semantics as white counterparts.
+    ///   - blackType: Same semantics as `whiteType`.
+    ///   - blackLevel: Same semantics as `whiteLevel`.
+    ///   - blackLock: Same semantics as `whiteLock`.
     ///   - hintLimit: 0 (no hints) to 0xFF (≈unlimited per bluecheese). Semantics unpinned.
     ///   - whiteRemote: 1 = white's moves come from app/network via 0x99.
     ///   - blackRemote: 1 = black's moves come from app/network via 0x99.

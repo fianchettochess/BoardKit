@@ -107,6 +107,11 @@ tshark -r capture.pcapng \
 # or follow the existing Captures/ convention.
 ```
 
+Before committing, reduce the capture to the protocol bytes required by the
+test and remove device addresses and UUIDs, serial numbers, names, pairing
+material, local paths, account data, and unrelated traffic. Do not commit the
+raw PacketLogger, btsnoop, pcap, phone, or application log.
+
 ### Parse errors
 
 `ReplayScript.parse(text:)` throws `ReplayScript.ParseError` on the first

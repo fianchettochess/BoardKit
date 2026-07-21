@@ -6,16 +6,19 @@ import BoardKit
 //
 // HARDWARE STATUS: protocol-verified against chessnutech/chess_move_api
 // @ c9b1dc6b (2025-08-08, latest official Move doc), cross-checked against
-// NSStudent/EasyLinkSwiftSDK @ 1b971059 (MIT).  Awaiting physical-board or
+// NSStudent/EasyLinkSwiftSDK @ 1b9710593b192ae102f8a1fd695467c9eb990535
+// (MIT). Awaiting physical-board or
 // BLE capture-log validation.
 //
 // Sources used (MIT-licensed unless noted):
 //   [MOVE-API]   github.com/chessnutech/chess_move_api README (official; no
 //                license — facts only; re-derived independently)
-//   [SWIFT-REF]  github.com/NSStudent/EasyLinkSwiftSDK (MIT, © 2026 Omar)
+//   [SWIFT-REF]  github.com/NSStudent/EasyLinkSwiftSDK
+//                @ 1b9710593b192ae102f8a1fd695467c9eb990535 (MIT, © 2026 Omar)
 //   [CLASSIC-DOC] github.com/chessnutech/Chessnut_eBoards (official; no license
 //                — facts only; classical profile context)
-//   [C-REF]      github.com/chessnutech/EasyLinkSDK (MIT, © 2022 chessnutech)
+//   [C-REF]      github.com/chessnutech/EasyLinkSDK
+//                @ 4554d17be976f746b8b1139a3b9a025e2b54c8ba (MIT, © 2022 chessnutech)
 //
 // Discrepancy ledger entries cited below follow the spec's numbering (D1–D9).
 

@@ -48,7 +48,7 @@ targets: [
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fianchettochess/BoardKit", from: "0.1.0"),
+    .package(url: "https://github.com/fianchettochess/BoardKit.git", from: "0.5.2"),
 ],
 ```
 

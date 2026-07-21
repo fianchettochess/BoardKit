@@ -8,11 +8,9 @@ import ChessCore
 /// `BoardAdapter` (which parses wire bytes) into the kernel stack
 /// (BoardExecutionGate, OccupancyMoveInference, etc.).
 ///
-/// Two-pass design note: the kernel types referenced in parameter docs
-/// (BoardExecutionGate, OccupancyMoveInference, OccupancyDiffResolver,
-/// BoardCorrectionPlanner, BoardSyncGate) currently live in FianchettoKit
-/// under their `SquareOff*` names. Pass 2 migrates them to BoardKit with
-/// the names used throughout this file.
+/// The kernel types referenced in the parameter documentation
+/// (`BoardExecutionGate`, `OccupancyMoveInference`, `BoardDiffResolver`,
+/// `BoardCorrectionPlanner`, and `BoardSyncGate`) live in BoardKit.
 public enum BoardEvent: Sendable {
 
     // MARK: - Sensor events
@@ -40,14 +38,13 @@ public enum BoardEvent: Sendable {
     /// DGT Pegasus. The session passes a nil `piece` through to
     /// `OccupancyMoveInference` unchanged (the four-slot occupancy path
     /// runs unmodified). When `piece` is non-nil the session MAY
-    /// short-circuit the slot machine and call a future
-    /// `resolveWithIdentity` overload on `OccupancyDiffResolver`.
+    /// use its own identity-aware reconciliation path.
     case squareSensed(square: String, isLift: Bool, piece: Piece? = nil)
 
     /// Full 64-square occupancy snapshot.
     ///
     /// Array is file-major (a1=0..a8=7, b1=8..h8=63) — the same layout
-    /// that `OccupancyDiffResolver.resolve(from:targetOccupancy:)` and
+    /// that `BoardDiffResolver.resolve(from:targetOccupancy:)` and
     /// `BoardCorrectionPlanner.corrections(for:boardOccupancy:)` expect.
     ///
     /// Occupancy-only adapters (Square Off, DGT Pegasus) emit this.

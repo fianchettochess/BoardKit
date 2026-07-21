@@ -13,8 +13,10 @@ import BoardKit
 // exported through the ChessnutAdapter library product.
 //
 // Sources informing this file (all MIT-licensed):
-//   [SWIFT-REF] github.com/NSStudent/EasyLinkSwiftSDK (MIT, © 2026 Omar)
-//   [C-REF]     github.com/chessnutech/EasyLinkSDK (MIT, © 2022 chessnutech)
+//   [SWIFT-REF] github.com/NSStudent/EasyLinkSwiftSDK
+//               @ 1b9710593b192ae102f8a1fd695467c9eb990535 (MIT, © 2026 Omar)
+//   [C-REF]     github.com/chessnutech/EasyLinkSDK
+//               @ 4554d17be976f746b8b1139a3b9a025e2b54c8ba (MIT, © 2022 chessnutech)
 //   [OFFICIAL-DOC] github.com/chessnutech/Chessnut_eBoards README (facts only)
 
 // MARK: - FEN/board-state piece-code table

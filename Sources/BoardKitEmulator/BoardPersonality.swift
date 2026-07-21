@@ -26,8 +26,8 @@ import BoardKit
 //
 // ## Designing for the fleet
 //
-// Future personalities (Pegasus, Millennium, Certabo, ChessUp — adapters
-// arriving in a parallel stream) implement this same protocol: pick the
+// Personalities for Pegasus, Millennium, Certabo, and ChessUp implement this
+// same protocol: pick the
 // GATT layout + advertised name from the board's transport constants, reuse
 // the adapter target's codec in the encode direction, and parse the host
 // writes the adapter emits. Nothing in `PeripheralServer` or `GameDriver`

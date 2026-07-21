@@ -64,7 +64,7 @@ private func encodePegasusDump(position: Position) -> Data {
 
 /// Wire: `63 07 BE F5 AE DD A9 5F 00`
 /// code=0x63, len=0x07 (6 key bytes + 0x00 terminator), key=[190,245,174,221,169,95], end=0x00
-/// [DD AuthorizeWithDeveloperKey + DGTBoard.init default key]
+/// [DD AuthorizeWithDeveloperKey + DGTBoard.init; EXT content_script.js]
 @Test func f1DevkeyFrameEncoding() {
     let adapter = PegasusAdapter()
     let frame = adapter.devkeyFrame()

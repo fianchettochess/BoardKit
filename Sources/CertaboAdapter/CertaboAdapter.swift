@@ -11,25 +11,29 @@ import BoardKit
 // RFCOMM, or BLE byte pipe — all produce byte-identical ASCII streams.
 //
 // HARDWARE STATUS: Partially verified — LED + occupancy vectors fully confirmed
-// against [MONO424] (MIT) semantics and [CER2NUT] golden-fixture vectors; RFID
-// wrapped-frame parsing verified against [CER2NUT] CertaboParser fixture family.
+// against [MONO424] (MIT) semantics and [CER2NUT] documented behavior; RFID
+// wrapped-frame parsing exercised against locally constructed regressions based
+// on [CER2NUT] behavior descriptions.
 // Awaiting physical-board or USB/BT capture-log validation.
 //
 // Sources (code-ok, MIT):
-//   [MONO424]  mono424/certabodriver (MIT, © 2021 Khadim Fall)
+//   [MONO424]  mono424/certabodriver
+//              @ d61997c60b623c221d0ffb0dd527e8857aedfbbb
+//              (MIT, © 2021 Khadim Fall)
 //              lib/CertaboBoard.dart, CertaboMessage.dart, CertaboProtocol.dart,
 //              LEDPattern.dart, CertaboCommunicationClient.dart,
 //              example/lib/main.dart
 //
-// Sources (facts only — GPL v3 / proprietary — no code structure copied):
+// Sources used for protocol research and behavior comparison (GPL,
+// proprietary, or no declared license):
 //   [OFFICIAL] CERTABO/CERTABO-CHESSBOARDS-SOFTWARE (GPL v3)
 //              codes.py, usbtool.py, run.py, reader_writer.py
-//   [BT]       CERTABO/BT (GPL v3)
+//   [BT]       CERTABO/BT (no declared license)
 //              bluetooth_server.py, cfg.py, utils/usbtool.py, reader_writer.py
 //   [HAKLEIN]  haklein/certabo-lichess (GPL v3)
 //              certabo/serialreader.py, certabo/certabo.py
-//   [CER2NUT]  gkalab/cer2nut (GPL-3.0) — wire-format test vectors / golden
-//              fixtures used as protocol facts; no code structure copied.
+//   [CER2NUT]  gkalab/cer2nut (GPL-3.0) — protocol behavior reference; no
+//              third-party source files or fixture blobs are redistributed.
 //   [ONEILL]   goneill.co.nz "ReadMe (Certabo).pdf" (proprietary doc)
 //   [CERTABO]  certabo.com FAQ, BLE-module page, manual (proprietary)
 
@@ -351,7 +355,7 @@ public struct CertaboCalibration: Sendable {
 /// - [DISCREPANCY D6] Unknown ids: exposed as nil in identitySnapshot; session queries
 ///                    lastVotedTags for re-calibration prompt.
 /// - [DISCREPANCY D7] Empty test: all-zero authoritative; ≥3-zeros as secondary heuristic.
-/// - [DISCREPANCY D8] mono424 bugs: NOT copied (skipToNextStart, 384-byte gate, etc.).
+/// - [DISCREPANCY D8] Avoid the mono424 skipToNextStart and 384-byte-gate behaviors.
 /// - [DISCREPANCY D9] Board-type detection: token count (320 vs 8); L/D for LED type.
 /// - [DISCREPANCY D10] Calibration sample count: 15-frame modal vote.
 ///
@@ -378,9 +382,9 @@ public struct CertaboCalibration: Sendable {
 ///
 /// ## HARDWARE STATUS
 ///
-/// Partially verified — LED encoder and occupancy decoder confirmed against
-/// [MONO424] (MIT) and [CER2NUT] golden fixtures. RFID wrapped-frame scanner
-/// confirmed against the [CER2NUT] CertaboParser fixture family. Awaiting
+/// Partially verified — LED encoder and occupancy decoder compared with
+/// [MONO424] (MIT) and [CER2NUT] behavior. RFID wrapped-frame scanner exercised
+/// with locally constructed regressions based on [CER2NUT] behavior. Awaiting
 /// physical-board or USB/BT capture-log validation for the full runtime path.
 public struct CertaboAdapter: BoardAdapter {
 
@@ -891,8 +895,9 @@ public struct CertaboAdapter: BoardAdapter {
     ///   4 corner LED payload offsets: `{base, base+3, base+27, base+30}`
     ///   Blue channel payload offsets: `{base+2, base+5, base+29, base+32}`
     ///
-    /// Source: [CER2NUT] RgbLedCommandTranslator (single source — facts only;
-    /// see Spec Risks). Verified byte-for-byte against cer2nut test vectors.
+    /// Source: [CER2NUT] RgbLedCommandTranslator behavior (single research
+    /// reference; see Spec Risks). Checked against locally constructed expected
+    /// frames; no upstream fixture blob is redistributed.
     private func encodeRGBLED(squares: [String]) -> Data {
         var payload = [UInt8](repeating: 0, count: 243)   // 81 LEDs × 3
         for s in squares {

@@ -5,26 +5,26 @@ import BoardKit
 // ── DGT Pegasus BLE adapter ───────────────────────────────────────────────────
 //
 // HARDWARE STATUS: protocol-verified against mono424/dgtdriver (MIT, Dart) [DD],
-// DGTCentaurMods pegasus.py (GPL — protocol constants as facts only; no code
-// structure copied) [PY], Graham O'Neill "DGT Pegasus driver" ReadMe PDF [GON],
+// with behavior cross-checks from DGTCentaurMods pegasus.py (GPL) [PY], Graham
+// O'Neill "DGT Pegasus driver" ReadMe PDF [GON],
 // and classic DGT protocol header dgtbrd13.h (DGT Projects, via picochess copy;
-// "may not be used commercially without written permission" — all facts
-// independently corroborated by the MIT [DD] code) [BRD]; awaiting
+// "may not be used commercially without written permission") [BRD]; awaiting
 // physical-board or BLE capture-log validation.
 //
-// License hygiene (CRITICAL):
-//   MIT sources ([DD]) — code may inform structure with source-attribution
-//     comments; direct code references cited inline.
-//   GPL sources ([PY]), license-restricted sources ([BRD]) — protocol
-//     constants and frame layouts learned as facts only; no code structure
-//     copied.
-//   License-less sources — facts only.
+// Provenance: the MIT [DD] source materially informed this implementation.
+// Other sources are protocol-research and behavior references. No third-party
+// source files or fixture blobs are redistributed by this target.
 //
 // Source tags used throughout:
-//   [DD]  mono424/dgtdriver (MIT, Dart) — primary implementation reference
-//   [PY]  DGTCentaurMods pegasus.py (GPL — facts only, no code structure)
+//   [DD]  mono424/dgtdriver @ 333b1d6b151368168a395c43364cc27798920bfc
+//         (MIT, Dart) — primary implementation reference
+//   [EXT] EdNekebno/PegasusChessComChromeExtension
+//         @ 5fe10bdcf00827886d1ad8702278abe65680a2ee (GPL-3.0) — public
+//         community behavior reference; content_script.js publishes the same
+//         developer-key frame as [DD]
+//   [PY]  DGTCentaurMods pegasus.py (GPL — behavior reference)
 //   [GON] Graham O'Neill "DGT Pegasus driver" ReadMe PDF (public document)
-//   [BRD] DGT Projects dgtbrd13.h (facts only — restricted doc)
+//   [BRD] DGT Projects dgtbrd13.h (restricted protocol reference)
 
 // MARK: - GATT constants
 
@@ -78,7 +78,7 @@ public enum PegasusGATT {
 
 // MARK: - Wire constants (host→board)
 
-/// Command bytes sent from host to board. [DD Command enum; BRD — facts only]
+/// Command bytes sent from host to board. [DD Command enum; BRD protocol reference]
 private enum Cmd {
     /// Reset/clear state. Fire-and-forget; board ignores mid-game. [BRD DGT_SEND_RESET; PY '@' handler]
     static let reset:           UInt8 = 0x40
@@ -95,7 +95,7 @@ private enum Cmd {
     /// Request trademark / device-info string.
     ///
     /// DD calls this "RequestDeviceInfo"; BRD calls it "DGT_SEND_TRADEMARK".
-    /// Same wire exchange. [DD; BRD — facts only]
+    /// Same wire exchange. [DD; BRD protocol reference]
     static let trademark:       UInt8 = 0x47
     /// Request battery status; also enables battery push updates on Pegasus. [DD; BRD DGT_SEND_BATTERY_STATUS]
     static let batteryStatus:   UInt8 = 0x4C
@@ -133,7 +133,9 @@ private enum MsgId {
 
 // MARK: - Developer key
 
-/// The default developer key bundled in mono424/dgtdriver (White Pawn app). [DD DGTBoard.init]
+/// The default Pegasus developer-key value is published by at least two public
+/// community implementations: [DD] `DGTBoard.init` and [EXT]
+/// `content_script.js`.
 ///
 /// Wire frame: `63 07 BE F5 AE DD A9 5F 00`
 /// (code 0x63, len 0x07 = 6 key bytes + 0x00 terminator, then key bytes, then 0x00)
@@ -203,8 +205,8 @@ private enum MsgId {
 /// adapter reassembles frames across BLE notifications. [DD `_handleInputStream`]
 ///
 /// **Resync rule:** on garbage, skip forward to the next byte whose bit 7 is
-/// set (only message-ID bytes have the MSB). [DD skipBadBytes rule — pinned;
-/// DD's implementation has an off-by-N bug — not ported]
+/// set (only message-ID bytes have the MSB). BoardKit uses a corrected boundary
+/// calculation for the [DD] `skipBadBytes` behavior.
 ///
 /// ## LED encoding
 ///
@@ -217,25 +219,27 @@ private enum MsgId {
 ///
 /// ## Hardware status
 ///
-/// Protocol-verified against [DD] (MIT, Dart), with protocol facts from [PY]
-/// (GPL), [GON] (public), and [BRD] (restricted doc, facts only). Awaiting
+/// Protocol-verified against [DD] (MIT, Dart), with behavior references from
+/// [PY] (GPL), [GON] (public), and [BRD] (restricted protocol reference). Awaiting
 /// physical-board or BLE capture-log runtime validation.
 public struct PegasusAdapter: BoardAdapter {
 
     // MARK: - Configuration
 
-    /// The dgtdriver / White Pawn app's built-in developer key — the default
-    /// ``devkey``.
+    /// A Pegasus developer-key value published by at least two public community
+    /// implementations — the default ``devkey`` for compatibility with them.
     ///
-    /// **Provenance risk:** a third-party app's hardcoded key, not a
-    /// BoardKit-specific one. Inject your own key obtained directly from DGT for
-    /// production. [spec risk]
+    /// The same six bytes are visible in the pinned public [DD] and [EXT]
+    /// implementations. Those sources establish public duplication of the value,
+    /// but do **not** establish that DGT officially authorizes general reuse.
+    /// Applications that require an officially authorized value should confirm
+    /// their requirements with DGT and inject the appropriate six bytes.
     public static let defaultDevkey: [UInt8] = [0xBE, 0xF5, 0xAE, 0xDD, 0xA9, 0x5F]
 
     /// 6-byte developer key sent in the devkey handshake frame.
     ///
-    /// Defaults to ``defaultDevkey``. Inject your own key obtained from DGT for
-    /// production.
+    /// Defaults to ``defaultDevkey``. Callers may inject another six-byte value
+    /// when they have one appropriate for their deployment.
     public var devkey: [UInt8]
 
     /// When `true`, all incoming square indices and outgoing LED indices are
@@ -485,7 +489,7 @@ public struct PegasusAdapter: BoardAdapter {
     ///
     /// **Pegasus occupancy encoding:** the hardware reports `0x01` for every
     /// occupied square. Bytes `0x01`–`0x0F` are all treated as "occupied";
-    /// piece identity is NOT available. [DD PegasusPiece collapse; BRD — facts only]
+    /// piece identity is NOT available. [DD PegasusPiece collapse; BRD protocol reference]
     ///
     /// Emits:
     /// - `.occupancySnapshot([Bool])` — file-major array (a1=0…h8=63)
@@ -613,7 +617,7 @@ public struct PegasusAdapter: BoardAdapter {
     /// caller can verify on hardware. [spec §7, discrepancy 3]
     ///
     /// [DISCREPANCY] Classic Revision II `0x60` form uses `60 04 <pattern>
-    /// <startField> <endField> 00` [BRD — facts only]. Pegasus uses the
+    /// <startField> <endField> 00` [BRD protocol reference]. Pegasus uses the
     /// 0x05 subcommand list form [DD; PY]. Never use the RevII form on Pegasus.
     /// [spec §7, discrepancy 5]
     ///

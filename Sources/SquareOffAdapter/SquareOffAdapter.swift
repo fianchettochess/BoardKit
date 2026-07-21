@@ -122,8 +122,7 @@ public struct SquareOffAdapter: BoardAdapter {
             // hardware-verified sequence: iOS SquareOffTransport.swift asyncAfter(0.25)
             // before sendInitHandshake, Android SquareOffTransport.swift asyncAfter(0.25)
             // before sendInitHandshake), then 150ms before requestBoardState so the board
-            // has time to process the new-game command (iOS/Android sendInitHandshake inner
-            // asyncAfter(0.15) pattern).  Pass 2 reference: HEAD iOS:498/519, Android:373/395.
+            // has time to process the new-game command (matching the field-tested clients).
             return [
                 (.startSession, 0.25), // 250ms
                 (.requestState, 0.15), // 150ms

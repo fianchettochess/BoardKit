@@ -6,10 +6,10 @@ name: CI
 # SIBLING-CHECKOUT PATTERN: BoardKit's Package.swift detects ../ChessCore at
 # resolve time — if the sibling directory exists it uses the local path,
 # otherwise it falls back to the versioned remote (github.com/fianchettochess/ChessCore).
-# ChessCore is a private repo, so both jobs clone it as a sibling of BoardKit
-# explicitly (using the SIBLINGS_CHECKOUT_PAT secret) so that the
-# sibling-detection path resolves correctly and no remote-fallback auth is needed.
-# See the "Secrets" section of the CI runbook for the PAT setup.
+# Both jobs clone ChessCore as a sibling explicitly so that the
+# sibling-detection path resolves consistently. SIBLINGS_CHECKOUT_PAT preserves
+# access before ChessCore becomes public; github.token is the read-only fallback
+# after the visibility change.
 #
 # ARCH NOTE: the self-hosted runner is an Intel Mac Pro (x86_64).  BoardKit's
 # library targets are platform-free.  The boardkit-emulator executable uses
@@ -17,18 +17,16 @@ name: CI
 # so it compiles on macOS and produces a no-op stub body on Linux (the library
 # targets are platform-free and build identically on both hosts).
 #
-# GATED OFF — auto-triggers are commented out below.  Nothing runs on
-# push or pull_request until you opt in.  To run immediately:
+# GATED OFF — this workflow is manual-only because it includes a persistent
+# self-hosted runner. Public pull requests run only ci-linux.yml on an ephemeral
+# GitHub-hosted runner. To run this trusted workflow:
 #   GitHub → Actions → CI → "Run workflow"
-#
-# To enable on-branch CI uncomment the push / pull_request block below.
 
 on:
   workflow_dispatch:
-  # Uncomment to enable on-branch CI:
-  # push:
-  #   branches: [main]
-  # pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -37,23 +35,32 @@ concurrency:
 jobs:
   macos-self-hosted:
     name: macOS — self-hosted (Intel Mac Pro)
+    # Defense in depth: never schedule this job for a future non-manual trigger.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 45
     steps:
       # Checkout ChessCore as a sibling so Package.swift's dynamic path
       # detection finds it at ../ChessCore relative to the BoardKit checkout.
-      # ChessCore is private — SIBLINGS_CHECKOUT_PAT must be a fine-grained
-      # PAT with Contents: Read access on fianchettochess/ChessCore.
+      # The optional PAT supports the pre-publication transition. Once ChessCore
+      # is public, the built-in read-only token is sufficient.
       - name: Checkout ChessCore (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: fianchettochess/ChessCore
           path: ChessCore
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
+          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
+          persist-credentials: false
+          # The trusted runner owns its workspace; do not copy its account's
+          # global .gitconfig into the Actions log.
+          set-safe-directory: false
 
       - name: Checkout BoardKit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: BoardKit
+          persist-credentials: false
+          set-safe-directory: false
 
       - name: Build
         working-directory: BoardKit
@@ -66,20 +73,23 @@ jobs:
   linux:
     name: Linux (ubuntu-latest)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: swift:latest
     steps:
       # Same sibling-checkout pattern as the macOS job.
       - name: Checkout ChessCore (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: fianchettochess/ChessCore
           path: ChessCore
-          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT }}
+          token: ${{ secrets.SIBLINGS_CHECKOUT_PAT || github.token }}
+          persist-credentials: false
 
       - name: Checkout BoardKit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: BoardKit
+          persist-credentials: false
 
       - name: Build
         working-directory: BoardKit

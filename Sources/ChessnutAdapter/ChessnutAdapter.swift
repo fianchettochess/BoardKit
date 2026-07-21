@@ -14,8 +14,10 @@ import BoardKit
 //
 // Sources used (all MIT-licensed or official documentation):
 //   [OFFICIAL-DOC] github.com/chessnutech/Chessnut_eBoards README.md
-//   [SWIFT-REF]    github.com/NSStudent/EasyLinkSwiftSDK (MIT)
-//   [C-REF]        github.com/chessnutech/EasyLinkSDK (official, MIT)
+//   [SWIFT-REF]    github.com/NSStudent/EasyLinkSwiftSDK
+//                  @ 1b9710593b192ae102f8a1fd695467c9eb990535 (MIT)
+//   [C-REF]        github.com/chessnutech/EasyLinkSDK
+//                  @ 4554d17be976f746b8b1139a3b9a025e2b54c8ba (official, MIT)
 //
 // Where sources disagreed, the REFERENCE implementations are followed and
 // each choice is recorded in a comment citing the discrepancy.

@@ -15,10 +15,9 @@ import Foundation
 /// adapters be structs (cheaply copied in test harnesses, no heap
 /// allocation) while the transport holds `var adapter: SomeAdapter`.
 ///
-/// ## Mapping to SquareOffAdapter (Pass 2 reference)
+/// ## Square Off mapping
 ///
-/// When the Square Off adapter arrives in Pass 2, its `feed(bytes:)` will
-/// execute:
+/// `SquareOffAdapter.feed(bytes:)` executes:
 /// ```
 /// SquareOffFramer.append(data) → [SquareOffMessage]
 /// SquareOffParser.event(from:) → SquareOffEvent
@@ -38,7 +37,7 @@ public protocol BoardAdapter: Sendable {
     ///
     /// - Important: For most adapters this is fixed for the connection. A few
     ///   boards, however, only learn their exact variant *after* the first
-    ///   frames arrive — notably ``CertaboAdapter``, which adds `.pieceIdentity`
+    ///   frames arrive — notably `CertaboAdapter`, which adds `.pieceIdentity`
     ///   once an RFID board is detected and calibrated, and drops
     ///   `.perSquareLEDs` once a Spectrum RGB corner-grid is identified. For
     ///   those, re-read `capabilities` after the connect handshake (or whenever
@@ -76,7 +75,7 @@ public protocol BoardAdapter: Sendable {
     /// .custom(data)       → data verbatim
     /// ```
     ///
-    /// ## Square Off mapping (Pass 2 reference)
+    /// ## Square Off mapping
     /// ```
     /// .startSession       → "14#1*".data(using: .ascii)
     /// .requestState       → "30#R*".data(using: .ascii)
@@ -102,7 +101,7 @@ public protocol BoardAdapter: Sendable {
     /// - First connect: `[(.startSession, delayBefore: 0)]`
     /// - Reconnect: `[(.startSession, delayBefore: 0.25)]`
     ///
-    /// ## Square Off mapping (Pass 2 reference)
+    /// ## Square Off mapping
     /// - First connect:
     ///   `[(.startSession, 0.25), (.requestState, 0.15)]`
     ///   (0.25 s = hardware-proven link-settle; matches the shipped adapter)

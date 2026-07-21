@@ -10,8 +10,10 @@ import BoardKit
 // across firmware variants is still ongoing.
 //
 // Sources consulted:
-//   [MCHESS]  domschl/python-mchess — magic-board.md + chess_link*.py (MIT)
-//   [ALSTRUP] alstrup/chesslink — independent WebBluetooth implementation (MIT)
+//   [MCHESS]  domschl/python-mchess @ 74ccfd406f4fb99e85891a42f27213d7d796f671
+//              — magic-board.md + chess_link*.py (MIT)
+//   [ALSTRUP] alstrup/chesslink @ 13b642733d7a4d11ed7dd98dce20a2aae7c820d2
+//              — independent WebBluetooth implementation (MIT)
 //   [GONEILL] Graham O'Neill Millennium driver readme — facts only (proprietary)
 
 // MARK: - Transport constants
@@ -497,6 +499,5 @@ public struct MillenniumAdapter: BoardAdapter {
         previousIdentity = nil
     }
 }
-
 
 

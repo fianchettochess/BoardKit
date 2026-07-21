@@ -97,8 +97,7 @@ public enum BoardTransportState: Equatable, Sendable {
     ///
     /// `attempt` is 1-indexed and counts from the most-recent unexpected
     /// drop. Display as "Reconnecting (attempt N/5)…" alongside a
-    /// `BoardReconnectPolicy` (or `SquareOffReconnectPolicy` in Pass 1)
-    /// that supplies the per-attempt delay schedule.
+    /// `BoardReconnectPolicy` that supplies the per-attempt delay schedule.
     case reconnecting(attempt: Int)
 }
 

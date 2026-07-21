@@ -1,0 +1,14 @@
+version: 2
+
+updates:
+  # Workflows intentionally retain the SHA-pinned checkout v4 line for
+  # compatibility with the existing self-hosted runner. Track v4 backports.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: swift
+    directory: /
+    schedule:
+      interval: weekly

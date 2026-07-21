@@ -56,10 +56,11 @@ public enum BoardCommand: Sendable {
     /// break every adapter's exhaustive `encode` switch (including
     /// community adapters invited by the README).
     ///
-    /// **Motorised boards (Pass 2+)**:
-    /// - Square Off GKS / Pro: maps to `SquareOffCommand.sendMove(uci:)` /
-    ///   `.sendMoveWithComma(from:to:)`.
-    /// - Chessnut Move: extended-profile auto-move command (TBD in Pass 3).
+    /// **Motorised boards**:
+    /// - Square Off GKS / Pro: currently quarantined; the adapter returns `nil`
+    ///   until the motor command's hardware behavior is confirmed.
+    /// - Chessnut Move: maps to the extended-profile target-position command
+    ///   after the adapter has received a piece-identity frame.
     ///
     /// **Note on BoardEvent**: after the mechanism completes, the board
     /// emits normal board-state frames confirming piece placement. A
