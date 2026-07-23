@@ -19,16 +19,40 @@
 // BoardKit depends on ChessCore (permissive MIT floor) and carries the same
 // generous community deployment floor. No SwiftUI, CoreBluetooth, SkipFuse,
 // or networking code in any library target.
+import Foundation
 import PackageDescription
 
-// Keep dependency identity deterministic for standalone consumers and SwiftPM's
-// own side-by-side checkout layout. Coordinated local development can override
-// this dependency explicitly with:
-//   swift package edit ChessCore --path ../ChessCore
-let chessCoreDependency: Package.Dependency = .package(
-    url: "https://github.com/fianchettochess/ChessCore.git",
-    .upToNextMinor(from: "0.7.2")
-)
+// ChessCore is reached by PATH when it is checked out beside this package, and
+// by URL otherwise.
+//
+// Both forms are needed because BoardKit is consumed two ways. Standalone —
+// external consumers, and BoardKit's own CI/release, which clone this repo
+// alone — there is no sibling and the versioned URL is the only correct answer.
+// Inside the Fianchetto layout every graph reaches ChessCore by path already
+// (FianchettoKit and FianchettoAndroid declare `../../ChessCore`,
+// Fianchetto.xcodeproj carries a local package reference, and Xcode Cloud's
+// ci_post_clone.sh clones the siblings at pinned revisions), so a URL here put
+// two locations behind one package identity — SwiftPM reports it as a
+// "Conflicting identity for chesscore" between the remote URL and the sibling
+// path dependency.
+//
+// SwiftPM resolves that today by letting the root's path win, but warns that it
+// will become an error. Matching the surrounding layout removes the second
+// location instead of relying on the override. Same conditional-manifest
+// approach as FianchettoAndroid's RECKLESS_LIB_DIR archive input.
+//
+// The probe is deliberately narrow: a directory named ChessCore next to this
+// one that actually contains a package manifest. A consumer who happens to
+// vendor an unrelated `ChessCore` package beside BoardKit would build against
+// it — the same thing SwiftPM's own side-by-side checkout layout would do.
+let siblingChessCore = URL(fileURLWithPath: Context.packageDirectory)
+    .deletingLastPathComponent()
+    .appendingPathComponent("ChessCore")
+
+let chessCoreDependency: Package.Dependency =
+    FileManager.default.fileExists(atPath: siblingChessCore.appendingPathComponent("Package.swift").path)
+        ? .package(path: siblingChessCore.path)
+        : .package(url: "https://github.com/fianchettochess/ChessCore.git", .upToNextMinor(from: "0.7.2"))
 
 let package = Package(
     name: "BoardKit",
