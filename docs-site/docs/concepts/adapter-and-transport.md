@@ -20,6 +20,7 @@ type** (struct) so the test harness can copy it cheaply without heap allocation.
 ```swift
 public protocol BoardAdapter: Sendable {
     var capabilities: BoardCapabilities { get }
+    var minimumWriteInterval: TimeInterval { get }
     mutating func feed(bytes: Data) -> [BoardEvent]
     func encode(_ command: BoardCommand) -> Data?
     func handshakeCommands(isReconnect: Bool)
@@ -48,6 +49,16 @@ value type are undefined behavior. An empty `Data` is safe (no-op).
 Returns the wire bytes for a `BoardCommand`, or `nil` when the command is
 unsupported for this board. The transport silently skips `nil` results.
 
+### `minimumWriteInterval`
+
+The transport serializes every outgoing adapter payload through one writer and
+leaves at least this many seconds between physical writes. This includes normal
+commands, handshake commands, and values returned by
+`takePendingResponses()`. The default is zero. `ChessnutAdapter` declares
+`0.2` seconds because classic Chessnut firmware requires a 200 ms write floor;
+stored-game import can queue three responses from one incoming frame, so those
+responses must not be written as a synchronous burst.
+
 ### `handshakeCommands(isReconnect:)`
 
 Returns the ordered handshake sequence the transport executes after a link
@@ -65,9 +76,9 @@ ack-based protocols override it. The ChessUp board retransmits every `0xA3`
 move frame until the host writes a `0x21` ack (and board-side promotions
 until a `0x23` ack) — leaving them unacked floods the notify pipe until the
 BLE link drops. The transport MUST call this immediately after every
-`feed(bytes:)` and write each returned payload to the board's write
-characteristic. Draining is destructive: each queued response is returned
-exactly once.
+`feed(bytes:)` and enqueue each returned payload on the same serialized, paced
+writer used for normal commands. Draining is destructive: each queued response
+is returned exactly once.
 
 ```swift
 // Chessnut Air — first connect:
@@ -108,10 +119,12 @@ The transport's responsibility is:
 1. On raw BLE data arrival: call `adapter.feed(bytes:)` → yield each
    `BoardEvent` into `events`.
    After each feed, call `adapter.takePendingResponses()` and write every
-   returned payload to the board's write characteristic.
+   returned payload to the board's write characteristic through the same
+   serialized writer used by `send(_:)`.
 2. On link established: yield `.connected`, execute
-   `adapter.handshakeCommands(isReconnect:)` with inter-command delays, then
-   let `adapter.feed()` emit `.ready` when the board ACKs.
+   `adapter.handshakeCommands(isReconnect:)` with inter-command delays and the
+   adapter's `minimumWriteInterval` floor, then let `adapter.feed()` emit
+   `.ready` when the board ACKs.
 3. On link drop: yield `.disconnected(error:)`.
 
 ```

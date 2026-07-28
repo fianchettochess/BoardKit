@@ -5,6 +5,7 @@ import Foundation
 import ChessCore
 import BoardKit
 import ChessnutAdapter
+import SquareOffAdapter
 
 // MARK: - BoardCapabilities
 
@@ -57,6 +58,18 @@ import ChessnutAdapter
     #expect(BoardCapabilities.motorised.rawValue        == 1 << 4)
     #expect(BoardCapabilities.batteryReporting.rawValue == 1 << 5)
     #expect(BoardCapabilities.perPieceTracking.rawValue == 1 << 6)
+}
+
+// MARK: - Outbound write pacing
+
+@Test func chessnutClassicDeclaresItsDocumentedWritePacingFloor() {
+    let adapter: any BoardAdapter = ChessnutAdapter()
+    #expect(adapter.minimumWriteInterval == 0.2)
+}
+
+@Test func adaptersWithoutAKnownPacingRequirementDefaultToZero() {
+    let adapter: any BoardAdapter = SquareOffAdapter()
+    #expect(adapter.minimumWriteInterval == 0)
 }
 
 // MARK: - ChessnutGATT profile matching

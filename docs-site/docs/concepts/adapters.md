@@ -123,6 +123,7 @@ import ChessnutAdapter
 var adapter = ChessnutAdapter()        // Air / Air+ / Pro / Go
 // capabilities: [.occupancySensing, .pieceIdentity, .perSquareLEDs,
 //                .moveIndication, .batteryReporting, .gameArchive]
+// minimumWriteInterval: 0.2 seconds — pace every command and queued response
 
 // Feed a raw BLE ATT notification payload:
 let events = adapter.feed(bytes: blePayload)

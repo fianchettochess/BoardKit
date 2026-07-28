@@ -46,6 +46,27 @@ public protocol BoardAdapter: Sendable {
     ///   return the same set at every read.
     var capabilities: BoardCapabilities { get }
 
+    /// Minimum interval, in seconds, between consecutive physical writes to
+    /// this board.
+    ///
+    /// The transport must serialize **all** outgoing adapter bytes through one
+    /// pacing path — commands returned by ``encode(_:)``, handshake commands,
+    /// and every value drained from ``takePendingResponses()`` — and leave at
+    /// least this much time between write invocations. A value of zero means
+    /// the adapter has no known pacing requirement.
+    ///
+    /// This is independent of ``handshakeCommands(isReconnect:)``'s
+    /// `delayBefore`: the latter expresses a command-specific protocol delay
+    /// (including initial link-settle time), while this property is a floor
+    /// between any two writes. When both apply, the transport waits for the
+    /// longer remaining delay.
+    ///
+    /// Chessnut Air-family firmware requires 200 ms between writes. That
+    /// matters especially for stored-game import, where one incoming
+    /// file-count frame queues three mandatory responses at once; draining the
+    /// returned array synchronously can make the board drop later commands.
+    var minimumWriteInterval: TimeInterval { get }
+
     /// Decode a raw data chunk and return the resulting semantic events.
     ///
     /// The adapter accumulates partial frames across calls and emits events
@@ -114,8 +135,9 @@ public protocol BoardAdapter: Sendable {
     /// require *out of band* from the semantic event stream.
     ///
     /// The transport MUST call this immediately after each `feed(bytes:)` and
-    /// write every returned value back to the board's write characteristic.
-    /// Draining is destructive: each queued response is returned exactly once.
+    /// enqueue every returned value on the same serialized, paced writer used
+    /// for normal commands. Draining is destructive: each queued response is
+    /// returned exactly once.
     ///
     /// ## Why this exists (ChessUp)
     /// The ChessUp board **retransmits every `0xA3` move frame until the host
@@ -126,12 +148,15 @@ public protocol BoardAdapter: Sendable {
     /// protocol detail out of every platform transport.
     ///
     /// ## Default
-    /// Empty. Boards with no ack protocol (Square Off, Chessnut) inherit the
+    /// Empty. Boards with no acknowledgement or response protocol inherit the
     /// default and need not implement it.
     mutating func takePendingResponses() -> [Data]
 }
 
 public extension BoardAdapter {
+    /// Default: no adapter-specific pacing requirement.
+    var minimumWriteInterval: TimeInterval { 0 }
+
     /// Default: no out-of-band responses. Only ack-based protocols override this.
     mutating func takePendingResponses() -> [Data] { [] }
 }

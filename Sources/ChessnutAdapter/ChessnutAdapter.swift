@@ -190,6 +190,12 @@ public struct ChessnutAdapter: BoardAdapter {
 
     public var capabilities: BoardCapabilities { .chessnutAirFamily }
 
+    /// Both reference clients enforce a 200 ms floor between every pair of
+    /// writes to the classic Chessnut command characteristic. The transport
+    /// applies this to normal commands and adapter-queued stored-game
+    /// handshake responses alike.
+    public var minimumWriteInterval: TimeInterval { 0.2 }
+
     public init() {}
 
     /// Feed raw BLE notification bytes through the frame parser.
