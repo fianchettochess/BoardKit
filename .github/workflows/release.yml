@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Existing numeric SemVer tag to publish (for example, 0.5.2)'
+        description: 'Existing numeric SemVer tag to publish (for example, 0.6.0)'
         required: true
         type: string
 
@@ -94,14 +94,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
           printf 'commit=%s\n' "$TAG_COMMIT" >> "$GITHUB_OUTPUT"
 
-      # Keep this version synchronized with the lower bound in Package.swift.
-      # Pinning it here catches accidental API-floor drift while still using
-      # the same remote dependency path as a standalone consumer.
-      - name: Resolve ChessCore 0.7.2 (supported minimum)
+      # Keep this version synchronized with the exact private-package pin in
+      # Package.swift and exercise the standalone remote dependency path.
+      - name: Resolve exact ChessCore 0.8.0
         working-directory: BoardKit
         run: |
           swift package resolve
-          swift package resolve --version 0.7.2 ChessCore
+          swift package resolve --version 0.8.0 ChessCore
 
       - name: Build
         working-directory: BoardKit

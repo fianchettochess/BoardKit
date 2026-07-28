@@ -51,7 +51,7 @@ graph.
 Add BoardKit to your package dependencies:
 
 ```swift
-.package(url: "https://github.com/fianchettochess/BoardKit.git", from: "0.5.2")
+.package(url: "https://github.com/fianchettochess/BoardKit.git", exact: "0.6.0")
 ```
 
 Then depend on the products you need:
@@ -316,23 +316,16 @@ swift test
 On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
 image through the same versioned ChessCore dependency path used by consumers.
 
-The manifest resolves the compatible ChessCore 0.7.x line, starting at 0.7.2,
-from GitHub so dependency identity remains stable for standalone consumers.
-For coordinated development with sibling checkouts, explicitly enable SwiftPM
-edit mode:
-
-```bash
-swift package edit ChessCore --path ../ChessCore
-# Return to the versioned dependency when finished:
-swift package unedit ChessCore
-```
+The manifest pins ChessCore 0.8.0 for standalone consumers. In the coordinated
+Fianchetto checkout, a sibling `../ChessCore` package is selected automatically
+so both private packages can advance together before their public debut.
 
 ## Releasing
 
 BoardKit follows semantic versioning. From a clean, tested `main`, create and
 push a new annotated `N.N.N` tag. The release workflow builds and tests that
-exact tag against the minimum supported ChessCore version before publishing the
-corresponding GitHub Release. Published tags are never moved or re-cut.
+exact tag against its exact ChessCore pin before publishing the corresponding
+GitHub Release. Published tags are never moved or re-cut.
 
 ## License hygiene for adapter authors
 

@@ -52,7 +52,7 @@ let siblingChessCore = URL(fileURLWithPath: Context.packageDirectory)
 let chessCoreDependency: Package.Dependency =
     FileManager.default.fileExists(atPath: siblingChessCore.appendingPathComponent("Package.swift").path)
         ? .package(path: siblingChessCore.path)
-        : .package(url: "https://github.com/fianchettochess/ChessCore.git", .upToNextMinor(from: "0.7.2"))
+        : .package(url: "https://github.com/fianchettochess/ChessCore.git", exact: "0.8.0")
 
 let package = Package(
     name: "BoardKit",
