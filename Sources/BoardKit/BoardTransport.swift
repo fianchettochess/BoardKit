@@ -89,7 +89,10 @@ public enum BoardTransportState: Equatable, Sendable {
     case scanning
     /// Connection attempt in progress.
     case connecting
-    /// Link is up and handshake has completed (board emitted `.ready`).
+    /// The transport link is writable and notifications are subscribed.
+    ///
+    /// The adapter handshake may still be in progress. Consumers that need
+    /// live sensor readiness must wait for ``BoardEvent/ready``.
     case connected
     /// Link is down after a disconnect or failure.
     case disconnected

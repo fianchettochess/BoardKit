@@ -149,6 +149,10 @@ public enum BoardTransportState: Equatable, Sendable {
 }
 ```
 
+`.connected` means the transport has a writable link and its notification
+subscription is active. It deliberately precedes the adapter handshake; wait
+for `BoardEvent.ready` before treating the board's sensor stream as ready.
+
 The `.reconnecting(attempt:)` case is 1-indexed. Display as
 "Reconnecting (attempt N/5)…" alongside a `BoardReconnectPolicy` that
 supplies the per-attempt delay schedule.

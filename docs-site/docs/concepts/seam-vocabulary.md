@@ -49,7 +49,7 @@ only occupancy: `map { $0 != nil }`.
 
 | Case | Meaning |
 |---|---|
-| `.connected` | Physical + protocol link established |
+| `.connected` | Transport link writable and notifications subscribed; adapter handshake may still be in progress |
 | `.ready` | Board completed its handshake; sensor stream is live |
 | `.disconnected(error:)` | Link dropped; `error` is nil for a clean disconnect |
 
