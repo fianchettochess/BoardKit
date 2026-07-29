@@ -1,4 +1,4 @@
-name: Release
+name: BoardKit — Release
 
 # Publish a GitHub Release for an existing immutable N.N.N tag. BoardKit is a
 # source package, so there is no binary asset. The exact tagged source is built
@@ -24,7 +24,7 @@ defaults:
 
 jobs:
   validate:
-    name: Validate version
+    name: BoardKit — validate release version
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -43,7 +43,7 @@ jobs:
           printf 'value=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
 
   verify:
-    name: Build and test exact tag
+    name: BoardKit — build/test exact release tag
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -111,7 +111,7 @@ jobs:
         run: swift test
 
   release:
-    name: Publish release
+    name: BoardKit — publish GitHub release
     needs: [validate, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 5

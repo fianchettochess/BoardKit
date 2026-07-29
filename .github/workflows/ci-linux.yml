@@ -1,4 +1,4 @@
-name: CI (Linux — push gate)
+name: BoardKit — CI (Linux push gate)
 
 # Routine on-push gate on the free GitHub-hosted Linux runner, so every commit
 # gets fast feedback without touching the shared self-hosted Mac Pro. BoardKit is
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   linux:
-    name: Linux — Swift ${{ matrix.swift }}
+    name: BoardKit — tests (Linux, Swift ${{ matrix.swift }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

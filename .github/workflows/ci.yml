@@ -1,4 +1,4 @@
-name: CI
+name: BoardKit — CI (manual full matrix)
 
 # Build + test BoardKit on macOS (self-hosted Intel Mac Pro) and Linux
 # (GitHub-hosted ubuntu-latest).
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   macos-self-hosted:
-    name: macOS — self-hosted (Intel Mac Pro)
+    name: BoardKit — tests (macOS, Intel self-hosted)
     # SECURITY: Before public visibility, restrict the organization runner
     # group to fianchettochess/BoardKit/.github/workflows/ci.yml@refs/heads/main.
     # These generic labels route jobs; they are not an authorization boundary.
@@ -70,7 +70,7 @@ jobs:
         run: swift test
 
   linux:
-    name: Linux (ubuntu-latest)
+    name: BoardKit — tests (Linux, Swift latest)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: swift:latest
