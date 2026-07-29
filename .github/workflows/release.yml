@@ -1,4 +1,5 @@
 name: BoardKit — Release
+run-name: BoardKit release · ${{ github.event.inputs.version || github.ref_name }}
 
 # Publish a GitHub Release for an existing immutable N.N.N tag. BoardKit is a
 # source package, so there is no binary asset. The exact tagged source is built
