@@ -19,40 +19,35 @@
 // BoardKit depends on ChessCore (permissive MIT floor) and carries the same
 // generous community deployment floor. No SwiftUI, CoreBluetooth, SkipFuse,
 // or networking code in any library target.
-import Foundation
 import PackageDescription
 
-// ChessCore is reached by PATH when it is checked out beside this package, and
-// by URL otherwise.
+// ChessCore is an ordinary versioned dependency.
 //
-// Both forms are needed because BoardKit is consumed two ways. Standalone —
-// external consumers, and BoardKit's own CI/release, which clone this repo
-// alone — there is no sibling and the versioned URL is the only correct answer.
-// Inside the Fianchetto layout every graph reaches ChessCore by path already
-// (FianchettoKit and FianchettoAndroid declare `../../ChessCore`,
-// Fianchetto.xcodeproj carries a local package reference, and Xcode Cloud's
-// ci_post_clone.sh clones the siblings at pinned revisions), so a URL here put
-// two locations behind one package identity — SwiftPM reports it as a
-// "Conflicting identity for chesscore" between the remote URL and the sibling
-// path dependency.
+// A previous revision probed the filesystem at manifest-evaluation time for a
+// sibling `ChessCore` directory and used it in preference to the versioned URL.
+// That is removed, for two reasons:
 //
-// SwiftPM resolves that today by letting the root's path win, but warns that it
-// will become an error. Matching the surrounding layout removes the second
-// location instead of relying on the override. Same conditional-manifest
-// approach as FianchettoAndroid's RECKLESS_LIB_DIR archive input.
+// 1. It made this package UNRESOLVABLE for external consumers — the exact case
+//    it was written to serve. SwiftPM checks every dependency out into
+//    `.build/checkouts/<name>`, so for anyone depending on BoardKit, ChessCore
+//    lands as a literal sibling of BoardKit. The probe fired, switched to a
+//    path dependency pointing into SwiftPM's own checkouts directory, and
+//    resolution died with "exhausted attempts to resolve the dependencies
+//    graph". Reproduced from a clean package whose only dependency was BoardKit.
+// 2. It silently bound the build to any directory named `ChessCore` that
+//    happened to sit beside the checkout.
 //
-// The probe is deliberately narrow: a directory named ChessCore next to this
-// one that actually contains a package manifest. A consumer who happens to
-// vendor an unrelated `ChessCore` package beside BoardKit would build against
-// it — the same thing SwiftPM's own side-by-side checkout layout would do.
-let siblingChessCore = URL(fileURLWithPath: Context.packageDirectory)
-    .deletingLastPathComponent()
-    .appendingPathComponent("ChessCore")
-
-let chessCoreDependency: Package.Dependency =
-    FileManager.default.fileExists(atPath: siblingChessCore.appendingPathComponent("Package.swift").path)
-        ? .package(path: siblingChessCore.path)
-        : .package(url: "https://github.com/fianchettochess/ChessCore.git", exact: "0.8.0")
+// The identity conflict it worked around is a MONOREPO problem and belongs
+// there: when a root package reaches ChessCore by `../../ChessCore` while this
+// manifest names a URL, SwiftPM sees two locations for one identity. It
+// resolves that today by letting the root's path win — with a warning that it
+// will become an error — and `swift package edit` or a root-level
+// `.package(path:)` override express the same thing deliberately. Fixing it
+// here traded a local warning for a shipped defect.
+let chessCoreDependency: Package.Dependency = .package(
+    url: "https://github.com/fianchettochess/ChessCore.git",
+    exact: "0.8.0"
+)
 
 let package = Package(
     name: "BoardKit",
