@@ -1,9 +1,11 @@
 # Installation
 
 BoardKit is a Swift Package Manager library. Its only runtime dependency is
-[ChessCore](https://github.com/fianchettochess/ChessCore) 0.8.0 (MIT), pinned
-exactly. No third-party networking, UI, or platform-specific libraries are
-required by the library targets.
+[ChessCore](https://github.com/fianchettochess/ChessCore) (MIT), required as
+`.upToNextMinor(from: "0.9.0")` — a range rather than a pin, so a program that
+depends on both can choose its own ChessCore within that minor. No third-party
+networking, UI, or platform-specific libraries are required by the library
+targets.
 
 ## Requirements
 
@@ -33,9 +35,27 @@ the package that consumes both.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/fianchettochess/BoardKit.git", exact: "0.6.0"),
+    .package(url: "https://github.com/fianchettochess/BoardKit.git", .upToNextMinor(from: "0.8.0")),
 ],
 ```
+
+!!! danger "0.6.0 and earlier cannot be resolved from a URL"
+    Their manifest probed the filesystem for a sibling ChessCore directory.
+    SwiftPM checks every dependency out into `.build/checkouts/<name>`, so for
+    anyone depending on BoardKit, ChessCore lands as a literal sibling — the
+    probe fired, switched to a path dependency pointing into SwiftPM's own
+    checkouts directory, and resolution failed with *"exhausted attempts to
+    resolve the dependencies graph"*. **0.7.0 is the first tag that resolves.**
+
+### Choosing a version requirement
+
+BoardKit is pre-1.0, and under `0.x` the minor is the breaking position: a
+`0.7.0 → 0.8.0` step may break source compatibility, a `0.5.1 → 0.5.2` step will
+not. The [changelog](changelog.md) records what changed in each.
+
+Prefer `.upToNextMinor(from:)` over `from:`. SwiftPM does not special-case `0.x`
+— `from: "0.8.0"` is shorthand for `.upToNextMajor(from: "0.8.0")`, which
+resolves `0.8.0 ..< 1.0.0` and would accept a breaking `0.9.0`.
 
 ### Xcode
 

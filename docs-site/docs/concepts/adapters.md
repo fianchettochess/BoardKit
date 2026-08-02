@@ -318,8 +318,12 @@ Each adapter module exposes a public `*GATT` (or `*BT`/`*Serial`) enum with
 the service/characteristic UUIDs and device-name filters a `BoardTransport`
 implementation needs. You must use these rather than hard-coding strings.
 
+Every adapter module publishes one, so a transport never has to hard-code a UUID
+for any supported board.
+
 | Adapter | Constants enum | Key constants |
 |---|---|---|
+| `SquareOffAdapter` | `SquareOffGATT` | `advertisedService`, `nordicUART`, `nusRX`, `nusTX`, `isSquareOff(name:)` |
 | `ChessnutAdapter` | `ChessnutGATT` | `boardStateService`, `commandWriteChar`, `isClassicProfile(name:)`, `isMoveProfile(name:)` |
 | `ChessnutMoveAdapter` | `ChessnutGATT` | Same UUIDs as classic; use `isMoveProfile(name:)` to select the Move adapter |
 | `PegasusAdapter` | `PegasusGATT` | `nordicUART`, `writeChar`, `notifyChar`, `factoryNamePrefix` (`"DGT_Pegasus"`) |

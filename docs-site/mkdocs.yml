@@ -58,7 +58,9 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - ..
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
@@ -77,3 +79,4 @@ nav:
       - Concrete adapters: concepts/adapters.md
       - Test support & emulator: concepts/test-support.md
   - Usage Examples: examples.md
+  - Changelog: changelog.md

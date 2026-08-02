@@ -50,8 +50,18 @@ graph.
 Add BoardKit to your package dependencies:
 
 ```swift
-.package(url: "https://github.com/fianchettochess/BoardKit.git", exact: "0.6.0")
+.package(url: "https://github.com/fianchettochess/BoardKit.git", .upToNextMinor(from: "0.8.0"))
 ```
+
+BoardKit is pre-1.0, and under `0.x` the minor is the breaking position — see
+[CHANGELOG.md](CHANGELOG.md). Prefer `.upToNextMinor(from:)` over `from:`:
+SwiftPM does not special-case `0.x`, so `from: "0.8.0"` spans `0.8.0 ..< 1.0.0`
+and would accept a breaking `0.9.0`.
+
+> **Versions before 0.7.0 cannot be resolved from a URL at all.** Their manifest
+> probed the filesystem for a sibling ChessCore and found SwiftPM's own
+> checkouts directory. Start at 0.7.0 or later; see the 0.7.0 entry in
+> [CHANGELOG.md](CHANGELOG.md).
 
 Then depend on the products you need:
 
@@ -314,18 +324,24 @@ swift test
 On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
 image through the same versioned ChessCore dependency path used by consumers.
 
-The manifest declares one ordinary versioned ChessCore dependency and knows
-nothing about how your checkout is arranged. To develop against a local
-ChessCore alongside BoardKit, use `swift package edit ChessCore` or a
-root-level `.package(path:)` override — the published manifest stays
-deterministic either way.
+The manifest declares one ordinary versioned ChessCore dependency —
+`.upToNextMinor(from: "0.9.0")` — and knows nothing about how your checkout is
+arranged. The requirement is a range rather than a pin so that a program
+depending on both BoardKit and ChessCore can choose its own ChessCore within
+that minor; an `exact:` requirement in a library propagates to every consumer
+and makes such a graph unresolvable. To develop against a local ChessCore
+alongside BoardKit, use `swift package edit ChessCore` or a root-level
+`.package(path:)` override — the published manifest stays deterministic either
+way.
 
 ## Releasing
 
-BoardKit follows semantic versioning. From a clean, tested `main`, create and
-push a new annotated `N.N.N` tag. The release workflow builds and tests that
-exact tag against its exact ChessCore pin before publishing the corresponding
-GitHub Release. Published tags are never moved or re-cut.
+BoardKit follows semantic versioning, and is pre-1.0: under `0.x` the minor is
+the breaking position. From a clean, tested `main`, create and push a new
+annotated `N.N.N` tag and add its entry to [CHANGELOG.md](CHANGELOG.md). The
+release workflow builds and tests that exact tag, resolving ChessCore from the
+manifest's declared range, before publishing the corresponding GitHub Release.
+Published tags are never moved or re-cut.
 
 ## License hygiene for adapter authors
 

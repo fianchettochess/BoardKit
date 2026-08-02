@@ -11,9 +11,11 @@ import Foundation
 /// each reconnection attempt and gives up once it returns `nil`.
 ///
 /// ```swift
-/// let policy  = BoardReconnectPolicy()                       // 2 s, 4 s, then 8 s, five attempts
-/// let eager   = BoardReconnectPolicy(delays: [0.5, 1, 2])    // three attempts, faster
-/// let patient = BoardReconnectPolicy(maxAttempts: 10, delays: [5])
+/// // `delays` shapes the ramp; `maxAttempts` decides how many attempts there
+/// // are. A schedule shorter than `maxAttempts` holds its last value.
+/// let policy  = BoardReconnectPolicy()                                 // 2, 4, 8, 8, 8
+/// let eager   = BoardReconnectPolicy(maxAttempts: 3, delays: [0.5, 1, 2])  // 0.5, 1, 2
+/// let patient = BoardReconnectPolicy(maxAttempts: 10, delays: [5])     // 5, ten times
 ///
 /// var attempt = 1
 /// while let delay = policy.nextDelay(attempt: attempt) {

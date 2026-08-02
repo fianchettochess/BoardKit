@@ -58,8 +58,14 @@ only occupancy: `map { $0 != nil }`.
 **`.battery(percent:)`** — battery level 0–100, emitted by boards that
 support it (Chessnut Air family, DGT Pegasus).
 
-**`.raw(Data)`** — undecoded bytes for unknown opcodes; session code must
-never branch on this case.
+**`.raw(Data)`** — undecoded bytes for any frame an adapter does not decode, so
+a consumer can log or capture it without losing data. Do not branch on it for
+ordinary board handling: the payload is a vendor's wire format, it is not stable
+across firmware, and anything built on it stops working on the next board. The
+one exception is a capability the seam advertises but does not yet model —
+`.perPieceTracking` is the current example — where a consumer that has checked
+the bit, and therefore knows exactly which adapter it is talking to, may parse
+the payload that adapter documents.
 
 ### Hardware-reported picks and stored games
 
@@ -141,14 +147,30 @@ public struct BoardCapabilities: OptionSet, Sendable {
     public static let moveIndication    // any move-highlight capability
     public static let motorised         // auto-move mechanism
     public static let batteryReporting  // reports battery level
-    public static let perPieceTracking  // per-robot unique identity (Chessnut Move)
+    public static let perPieceTracking  // true per-piece unique identity (Chessnut Move)
     public static let gameArchive       // onboard stored-game archive (requestStoredGames)
-
-    // Convenience presets
-    public static let chessnutAirFamily: BoardCapabilities
-    public static let squareOff: BoardCapabilities
 }
 ```
+
+Vendor capability presets live with the vendor's adapter, not on the shared
+type, so importing `BoardKit` alone does not pull in a vocabulary for hardware
+you do not use:
+
+| Preset | Declared in | Import |
+|---|---|---|
+| `BoardCapabilities.squareOff` | `SquareOffAdapter` | `import SquareOffAdapter` |
+| `BoardCapabilities.chessnutAirFamily` | `ChessnutAdapter` | `import ChessnutAdapter` |
+| `BoardCapabilities.chessUp` | `ChessUpAdapter` | `import ChessUpAdapter` |
+
+!!! warning "`.perPieceTracking` is a hardware fact, not a seam feature"
+    The bit says the board can tell one knight from the other. The seam does not
+    model that yet: `identitySnapshot` carries type and colour per square exactly
+    as it does for `.pieceIdentity`, and per-piece status arrives as
+    `BoardEvent.raw`. A consumer that wants it must poll and parse through the
+    adapter it has already declared a dependency on — for the Chessnut Move that
+    is `ChessnutMoveAdapter.pieceStatusRequestData()`, whose response shape that
+    adapter documents. Read the bit as "the hardware can do it", not "the seam
+    can express it".
 
 ### Capability matrix
 

@@ -110,8 +110,11 @@ attempts waits 2 s, 4 s, then 8 s three times.
 ### Example
 
 ```swift
-let policy = BoardReconnectPolicy()                    // 2 s, 4 s, then 8 s
-// let policy = BoardReconnectPolicy(delays: [0.5, 1]) // impatient, two attempts
+let policy = BoardReconnectPolicy()                      // 2, 4, 8, 8, 8
+
+// `delays` sets the shape of the ramp; `maxAttempts` sets how many there are.
+// BoardReconnectPolicy(delays: [0.5, 1])                // 0.5, 1, 1, 1, 1
+// BoardReconnectPolicy(maxAttempts: 2, delays: [0.5])   // 0.5, 0.5 — then give up
 
 for attempt in 1... {
     guard let delay = policy.nextDelay(attempt: attempt) else {

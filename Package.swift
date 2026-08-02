@@ -44,9 +44,17 @@ import PackageDescription
 // will become an error — and `swift package edit` or a root-level
 // `.package(path:)` override express the same thing deliberately. Fixing it
 // here traded a local warning for a shipped defect.
+// The requirement is a range, not a pin. `exact:` in a library propagates to
+// every consumer: a program that needs a different ChessCore than the one named
+// here cannot have it, and resolution fails outright rather than negotiating.
+//
+// `.upToNextMinor` rather than `from:` because ChessCore is pre-1.0 and under
+// 0.x the minor is its breaking position. SwiftPM does not special-case 0.x —
+// `from: "0.9.0"` is shorthand for `.upToNextMajor`, i.e. `0.9.0 ..< 1.0.0`,
+// which would accept a breaking 0.10.0. This range is `0.9.0 ..< 0.10.0`.
 let chessCoreDependency: Package.Dependency = .package(
     url: "https://github.com/fianchettochess/ChessCore.git",
-    exact: "0.8.0"
+    .upToNextMinor(from: "0.9.0")
 )
 
 let package = Package(
