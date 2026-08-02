@@ -21,17 +21,17 @@ public enum BoardEvent: Sendable {
     /// no orientation correction is applied by the adapter. Orientation
     /// adjustment (for players seated on the black side) is a session
     /// concern: the session applies `ChessBoardGeometry.flippedSquare`
-    /// when a user-configurable flip is active, mirroring the existing
-    /// `SquareOffSession.orientationFlipped` pattern. This matches the
-    /// live kernel behaviour and keeps adapters stateless with respect to
-    /// UI preferences.
+    /// when a user-configurable flip is active. Adapters therefore stay
+    /// stateless with respect to UI preferences.
     ///
-    /// The type is `String` — NOT `ChessCore.Square` — to match the
-    /// existing kernel parameter types of
-    /// `BoardExecutionGate.feed(square:isLift:)` and
-    /// `OccupancyMoveInference.handle(square:isLift:)`. The session can
-    /// pass `event.square` directly to both kernels without any conversion.
-    /// Callers needing a typed Square: `Square(algebraic: event.square)`.
+    /// - Note: The square crosses this seam as a `String` rather than a
+    ///   ``ChessCore/Square``, matching the kernels that consume it
+    ///   (`BoardExecutionGate.feed(square:isLift:)`,
+    ///   `OccupancyMoveInference.handle(square:isLift:)`). This is a known
+    ///   wart: a typed square would make a malformed value unrepresentable
+    ///   and remove several validity checks. Changing it is a source break
+    ///   for every adapter and kernel call, so it is deferred to a version
+    ///   that can afford one. Convert with `Square(algebraic: event.square)`.
     ///
     /// `piece` is non-nil only for identity-sensing boards (Chessnut,
     /// Certabo, Millennium, DGT Classic). It is nil for Square Off and
@@ -67,10 +67,9 @@ public enum BoardEvent: Sendable {
     /// CCCD written). The adapter emits this before beginning the
     /// handshake sequence.
     ///
-    /// **New behavior vs. SquareOffTransport**: the existing Square Off
-    /// transport yields only `.disconnected` into its event stream. Adding
-    /// `.connected` requires a transport-side change: yield `.connected`
-    /// from the `didDiscoverCharacteristics` / `handleReady` path.
+    /// Transports that synthesize this event rather than decoding it from
+    /// the wire should yield it from their characteristic-discovery /
+    /// link-ready path, before running the adapter's handshake sequence.
     case connected
 
     /// Board has completed its initialisation handshake and confirmed state.
@@ -103,11 +102,18 @@ public enum BoardEvent: Sendable {
     /// payload — tracked for a future minor version).
     case battery(percent: Int)
 
-    /// Raw undecoded bytes — debug and capture-log research only.
+    /// Raw undecoded bytes.
     ///
-    /// Session code must NEVER branch on this case. Adapters should emit
-    /// it for any opcode they do not recognise so callers can log unknown
-    /// frames without losing data.
+    /// Adapters emit this for any frame they do not decode, so a consumer can
+    /// log or capture it without losing data.
+    ///
+    /// Do not branch on it for ordinary board handling: the payload is a
+    /// vendor's wire format, it is not stable across firmware, and any
+    /// behaviour built on it silently stops working on the next board. The one
+    /// exception is a capability the seam advertises but does not yet model —
+    /// ``BoardCapabilities/perPieceTracking`` is the current example — where a
+    /// consumer that has checked the bit, and therefore knows exactly which
+    /// adapter it is talking to, may parse the payload it documents.
     case raw(Data)
 
     // MARK: - Hardware-reported picks

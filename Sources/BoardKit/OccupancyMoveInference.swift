@@ -2,9 +2,8 @@ import Foundation
 
 // Occupancy-based move inference — shared kernel for all occupancy-sensing boards.
 //
-// Extracted from the SquareOff-specific session on 2026-07-03 (renamed from
-// SquareOffMoveInference / SquareOffInferenceFeedback). Pure state machine:
-// the caller owns the game and validates candidates against the legal-move list.
+// Pure state machine: the caller owns the game and validates candidates against
+// the legal-move list.
 
 /// Feedback emitted by the move-inference state machine. This package target
 /// has no default global actor, so the enum and its `Equatable` conformance are
@@ -57,8 +56,7 @@ public final class OccupancyMoveInference {
     /// opponent's next move) and deferred genuine corner-rook moves like
     /// Rhf1/Rad1 when rights were already gone. Defaults to deferring (true)
     /// when unset so the pure state-machine behavior is unchanged for callers
-    /// that haven't bound a game. (V1-REVIEW follow-up 2026-06-10 §1 high /
-    /// §3 rec #3)
+    /// that haven't bound a game.
     public var isCastlingStillLegal: ((_ rookHomeSquare: String) -> Bool)?
 
     /// The four castle shapes: the lift pair (king home + same-side rook
@@ -151,11 +149,10 @@ public final class OccupancyMoveInference {
     ///      kingside, d-file for queenside), and the king hasn't
     ///      been lifted yet.
     ///
-    /// Shape #2 closes the V1-REVIEW 2026-06-09 §2 SO High #2 bug:
-    /// before the fix, lifting the rook first (e.g. h1 → f1) emitted
-    /// a single legal-rook-move candidate that the session
-    /// immediately committed, destroying castling rights on the board
-    /// while the user was still mid-castle. By deferring, we wait for
+    /// Shape #2 matters because without it, lifting the rook first
+    /// (e.g. h1 → f1) emits a single legal-rook-move candidate that the
+    /// session immediately commits, destroying castling rights on the
+    /// board while the user is still mid-castle. By deferring, we wait for
     /// the king-leg of the move to arrive (the rook-place then
     /// king-lift then king-place sequence flows through shape #1
     /// naturally). Shape #2 is additionally gated on the
@@ -168,7 +165,6 @@ public final class OccupancyMoveInference {
     /// rook-only move sits deferred until the next lift event
     /// flushes it through `handle(...)`; the session re-feeds that
     /// flushing lift after commit so the opponent's move survives.
-    /// (V1-REVIEW follow-up 2026-06-10 §1 high / §3 rec #3)
     private func isCastlingInProgress() -> Bool {
         guard let placed = b, d == nil, let a else { return false }
         if let c {
@@ -196,8 +192,7 @@ public final class OccupancyMoveInference {
             // Only defer when castling with this rook is actually still
             // legal — otherwise this is a genuine corner-rook move (or the
             // physical rook leg of an already-committed castle) and must
-            // surface its candidate immediately. (V1-REVIEW follow-up
-            // 2026-06-10 §1 high / §3 rec #3)
+            // surface its candidate immediately.
             return isCastlingStillLegal?(a) ?? true
         }
     }
@@ -209,7 +204,7 @@ public final class OccupancyMoveInference {
     /// commits the FIRST legal candidate, and for rook-first (or rook-placed-
     /// first) physical move orders the plain rook/king move (h1f1 / e1f1) is
     /// also legal and would be emitted first, recording Rf1/Kf1 instead of
-    /// O-O. (V1-REVIEW follow-up 2026-06-10 §1 high / §3 rec #3)
+    /// O-O.
     private func completedCastleUCI() -> String? {
         guard let a, let b, let c, let d else { return nil }
         let lifts = Set([a, c])
@@ -224,7 +219,7 @@ public final class OccupancyMoveInference {
             // Emit 5-char promotion variants before the 4-char base UCI so the
             // session's "first legal candidate wins" filter sees them first and
             // can trigger the promotion picker instead of silently auto-committing
-            // the first legal promotion piece. (GAP 3 — promotion picker, kit layer)
+            // the first legal promotion piece.
             for promo in Self.promotionVariants(for: base) {
                 if seen.insert(promo).inserted {
                     result.append(promo)
@@ -246,7 +241,7 @@ public final class OccupancyMoveInference {
     /// piece-identity state. If a non-pawn piece (e.g. a rook) moves from
     /// rank 7 to rank 8, the four spurious 5-char candidates are generated
     /// here but will be discarded by the session's legal-move filter because
-    /// non-pawn moves never have promotion types. (GAP 3 — promotion picker)
+    /// non-pawn moves never have promotion types.
     private static func promotionVariants(for uci: String) -> [String] {
         guard uci.count == 4 else { return [] }
         let chars = Array(uci)
@@ -268,7 +263,7 @@ public final class OccupancyMoveInference {
         // pairwise candidates so the session's first-legal-wins filter picks
         // O-O/O-O-O over the simultaneously-legal plain rook/king move. If
         // castling turns out not to be legal, the pairs below still provide
-        // the fallback. (V1-REVIEW follow-up 2026-06-10 §1 high / §3 rec #3)
+        // the fallback.
         if let castle = completedCastleUCI() {
             out.append(castle)
         }

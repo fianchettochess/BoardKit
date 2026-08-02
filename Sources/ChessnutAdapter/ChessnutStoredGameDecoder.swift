@@ -17,8 +17,8 @@ import BoardKit
 // in realtime mode, bracketed by `0x37 01 BE` (begin) / `0x37 01 ED` (end).
 // Each frame is a full 64-square piece-identity snapshot (piece type + colour
 // per square); the board stores positions, NOT algebraic moves. Reconstructing
-// the game therefore means diffing consecutive snapshots — Fianchetto's own
-// logic, not derived from any board vendor's software.
+// the game therefore means diffing consecutive snapshots — logic original to
+// this package, not derived from any board vendor's software.
 
 /// Reconstructs a played game from the ordered board-identity snapshots a
 /// Chessnut board streams back during a stored-game ("OTB") import.

@@ -4,12 +4,12 @@ import ChessCore
 /// Reconciles a Position against a 64-bit presence array reported by the board.
 ///
 /// The board only knows which squares are occupied, not what piece sits where. The
-/// resolver searches the legal-move tree starting from the app's current position
-/// and returns the move sequences whose resulting occupancy exactly matches the
+/// resolver searches the legal-move tree starting from the current position and
+/// returns the move sequences whose resulting occupancy exactly matches the
 /// board's snapshot.
 ///
 /// Shared kernel — board-agnostic for any occupancy-sensing board (Square Off,
-/// DGT Pegasus, etc.). Renamed from SquareOffDiffResolver on 2026-07-03.
+/// DGT Pegasus, etc.).
 public enum BoardDiffResolver {
 
     public struct Resolution: Equatable, Sendable {
@@ -41,8 +41,8 @@ public enum BoardDiffResolver {
             return [Resolution(moves: [])]
         }
 
-        // The squares whose occupancy disagrees between the app and the board — the
-        // physical change the resolver must explain.
+        // The squares whose occupancy disagrees between the expected position and
+        // the board — the physical change the resolver must explain.
         let appOccupancy = occupancyArray(for: position)
         var changed = Set<Int>()
         for i in 0..<64 where appOccupancy[i] != targetOccupancy[i] { changed.insert(i) }
@@ -83,8 +83,8 @@ public enum BoardDiffResolver {
         // bit-count) rather than the move that actually happened. Resolutions that
         // explain the change with NO wandering (a single legal capture into the changed
         // square, a direct catch-up) are preferred and offered alone when present;
-        // otherwise only the least-wandering few are surfaced (vs the old raw,
-        // arbitrarily-ordered list that buried the plausible move under noise).
+        // otherwise only the least-wandering few are surfaced, so a plausible move
+        // is never buried under coincidental noise.
         let scored = matches.map { (resolution: $0, wander: wanderCount($0, from: position, changed: changed)) }
         let clean = scored.filter { $0.wander == 0 }.map { $0.resolution }
         if !clean.isEmpty {
@@ -120,7 +120,7 @@ public enum BoardDiffResolver {
         var out = [Bool](repeating: false, count: 64)
         for file in 0..<8 {
             for rank in 0..<8 {
-                let appIndex = rank * 8 + file       // app's rank-major layout
+                let appIndex = rank * 8 + file       // Position's rank-major layout
                 let boardIndex = file * 8 + rank     // board's file-major layout
                 out[boardIndex] = position.board[appIndex] != nil
             }

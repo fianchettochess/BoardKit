@@ -2,15 +2,14 @@ import Foundation
 import ChessCore
 
 /// Pure-logic state machine for the "physical board diverged from the
-/// app" transition that drives the clock pause + haptic in the OTB view.
-/// The view holds the gate's state in `@State` and feeds it the current
-/// `(isOutOfSync, clockRunning, activeColor)` on every change; the gate
-/// decides whether the clock should be paused or resumed and whether the
-/// entry-only haptic should fire.
+/// game" transition that drives the clock pause + haptic in an
+/// over-the-board view. The view holds the gate's state and feeds it the
+/// current `(isOutOfSync, clockRunning, activeColor)` on every change; the
+/// gate decides whether the clock should be paused or resumed and whether
+/// the entry-only haptic should fire.
 ///
 /// Lives outside the view so the transition logic is unit-testable
-/// without standing up SwiftUI. Board-agnostic kernel — renamed from
-/// SquareOffSyncGate on 2026-07-03.
+/// without standing up SwiftUI. Board-agnostic kernel.
 public struct BoardSyncGate: Sendable {
 
     public enum Action: Equatable, Sendable {
@@ -50,10 +49,9 @@ public struct BoardSyncGate: Sendable {
     /// On exit-from-desync, the resume uses this current value so a
     /// resolution that committed a move during the desync window
     /// (advancing the position) resumes the clock on the correct
-    /// side. The earlier implementation cached
-    /// `pausedActiveColor` at desync-entry and resumed with that
-    /// remembered value, which inverted the clock forever once a
-    /// resolution ran inside the gate. (V1-REVIEW §2 SO High #3)
+    /// side. Resuming instead with a `pausedActiveColor` cached at
+    /// desync-entry would invert the clock permanently once a
+    /// resolution ran inside the gate.
     public mutating func update(
         isOutOfSync: Bool,
         clockIsRunning: Bool,

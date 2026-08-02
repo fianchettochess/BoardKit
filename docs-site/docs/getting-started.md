@@ -124,7 +124,7 @@ import BoardKit
 
 // After the engine or navigation layer has applied a move:
 let gate = BoardExecutionGate(move: engineMove, positionBefore: positionBefore)
-print(gate.humanDescription)   // "Play Nf3 on the board"
+print("Play \(gate.san) on the board")   // gate.san == "Nf3"
 
 for await event in transport.events {
     guard case .squareSensed(let square, let isLift, _) = event else { continue }

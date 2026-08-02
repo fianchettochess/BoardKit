@@ -1,52 +1,60 @@
 import Foundation
 
-/// Pure-value reconnect policy for a physical chess board's BLE transport.
+/// Pure-value reconnect schedule for a physical board's transport.
 ///
-/// Encodes the reconnect schedule for unexpected disconnections (BLE drop,
-/// not user-initiated). The transport layer instantiates one policy, then
-/// calls `nextDelay(attempt:)` before each reconnection attempt and gives up
-/// when the attempt count exceeds `maxAttempts`.
+/// Applies to any board and any transport — how long to wait between
+/// reconnection attempts after an unexpected drop, and when to stop trying.
+/// Neither is a hardware fact: they state how patient a program wants to be, so
+/// both are parameters with defaults rather than constants.
 ///
-/// Board-agnostic kernel — applies to any BLE transport (Square Off, Chessnut,
-/// DGT Pegasus, etc.). Renamed from SquareOffReconnectPolicy on 2026-07-03.
+/// The transport builds one policy, then calls ``nextDelay(attempt:)`` before
+/// each reconnection attempt and gives up once it returns `nil`.
 ///
-/// **Policy**
-///   - Max 5 attempts per disconnection.
-///   - Back-off schedule: 2 s → 4 s → 8 s → 8 s → 8 s (attempt 1 through 5).
-///   - Beyond attempt 5 (or below 1): nil — give up.
+/// ```swift
+/// let policy  = BoardReconnectPolicy()                       // 2 s, 4 s, then 8 s, five attempts
+/// let eager   = BoardReconnectPolicy(delays: [0.5, 1, 2])    // three attempts, faster
+/// let patient = BoardReconnectPolicy(maxAttempts: 10, delays: [5])
 ///
-/// Callers that want to surface attempt progress in UI should expose an
-/// `attempt: Int` observable on the transport alongside its state, and
-/// build the "Reconnecting (attempt N/5)…" label from it.
+/// var attempt = 1
+/// while let delay = policy.nextDelay(attempt: attempt) {
+///     try await Task.sleep(for: .seconds(delay))
+///     if await transport.reconnect() { break }
+///     attempt += 1
+/// }
+/// ```
 public struct BoardReconnectPolicy: Sendable {
 
     /// Maximum number of reconnection attempts before the transport gives up
-    /// and stays in `.disconnected`.
+    /// and stays disconnected.
     public let maxAttempts: Int
 
-    public init(maxAttempts: Int = 5) {
+    /// The back-off schedule, in seconds, one entry per attempt.
+    ///
+    /// Attempts past the end of the array repeat the last entry, so a schedule
+    /// shorter than ``maxAttempts`` describes a ramp that then holds steady.
+    public let delays: [TimeInterval]
+
+    /// Create a policy.
+    ///
+    /// - Parameters:
+    ///   - maxAttempts: How many attempts to make before giving up. Defaults
+    ///     to 5.
+    ///   - delays: Seconds to wait before each attempt. The last entry is held
+    ///     for every attempt beyond its length. Defaults to `[2, 4, 8]` — a
+    ///     ramp that then settles. An empty array falls back to that default.
+    public init(maxAttempts: Int = 5, delays: [TimeInterval] = [2, 4, 8]) {
         self.maxAttempts = maxAttempts
+        self.delays = delays.isEmpty ? [2, 4, 8] : delays
     }
 
-    /// Delay to wait before the given reconnect attempt (1-indexed).
+    /// Seconds to wait before the given reconnect attempt.
     ///
     /// - Parameter attempt: 1-based attempt number.
-    /// - Returns: The delay to sleep before firing the attempt, or `nil` if
-    ///   `attempt` is out of the valid range (`1…maxAttempts`).
-    ///
-    /// Schedule for the default `maxAttempts == 5`:
-    ///
-    /// | Attempt | Delay |
-    /// |---------|-------|
-    /// | 1       | 2 s   |
-    /// | 2       | 4 s   |
-    /// | 3–5     | 8 s   |
+    /// - Returns: The delay to sleep before firing the attempt, or `nil` when
+    ///   `attempt` falls outside `1...maxAttempts` — which is the signal to
+    ///   stop retrying.
     public func nextDelay(attempt: Int) -> TimeInterval? {
         guard attempt >= 1, attempt <= maxAttempts else { return nil }
-        switch attempt {
-        case 1:  return 2
-        case 2:  return 4
-        default: return 8
-        }
+        return delays[min(attempt - 1, delays.count - 1)]
     }
 }

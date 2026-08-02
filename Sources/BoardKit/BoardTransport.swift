@@ -2,11 +2,11 @@ import Foundation
 
 /// Protocol for the platform-specific BLE (or USB-HID) transport layer.
 ///
-/// **This protocol is documented in BoardKit but its implementation lives
-/// in FianchettoKit or the app target**, where `CoreBluetooth` (iOS/macOS)
-/// or `SkipFuse` (Android) is available. BoardKit intentionally never
-/// imports CoreBluetooth — the protocol definition here is pure Swift,
-/// carrying only `Foundation` types.
+/// **This protocol is declared in BoardKit but implemented by the
+/// consumer**, in a target where `CoreBluetooth` (iOS/macOS) or `SkipFuse`
+/// (Android) is available. BoardKit intentionally never imports
+/// CoreBluetooth — the protocol definition here is pure Swift, carrying
+/// only `Foundation` types.
 ///
 /// ## Relationship to BoardAdapter
 ///
@@ -23,12 +23,8 @@ import Foundation
 ///                                                              └──────────────┘
 /// ```
 ///
-/// ## Migration from SquareOffTransport
+/// ## Implementation contract
 ///
-/// The existing `SquareOffTransportProtocol` maps as follows:
-/// - `AsyncStream<SquareOffEvent>` → `AsyncStream<BoardEvent>`
-/// - `func send(_ command: SquareOffCommand)` → `func send(_ command: BoardCommand)`
-/// - `scan / connect / disconnect`: unchanged in signature
 /// - On raw data: call `adapter.feed(bytes:)` → yield `[BoardEvent]`.
 /// - On link established: yield `.connected`, execute
 ///   `adapter.handshakeCommands(isReconnect:)` with inter-command delays,
@@ -81,7 +77,7 @@ public protocol BoardTransport: AnyObject {
 public enum BoardTransportState: Equatable, Sendable {
     /// Bluetooth radio is off. All other operations are unavailable.
     case poweredOff
-    /// The app lacks Bluetooth permission.
+    /// The host application lacks Bluetooth permission.
     case unauthorized
     /// Ready to scan; not currently connected or scanning.
     case idle
@@ -99,8 +95,8 @@ public enum BoardTransportState: Equatable, Sendable {
     /// Auto-reconnect is in progress.
     ///
     /// `attempt` is 1-indexed and counts from the most-recent unexpected
-    /// drop. Display as "Reconnecting (attempt N/5)…" alongside a
-    /// `BoardReconnectPolicy` that supplies the per-attempt delay schedule.
+    /// drop. Pair it with the `maxAttempts` of the ``BoardReconnectPolicy``
+    /// driving the loop if you want to report progress.
     case reconnecting(attempt: Int)
 }
 

@@ -2,9 +2,7 @@ import Testing
 import BoardKit
 
 /// Covers `ChessBoardGeometry` — the pure square-geometry helpers shared
-/// between physical board sessions. Migrated from
-/// FianchettoKitTests/SquareOffGeometryTests.swift on 2026-07-03
-/// (renamed SquareOffGeometry → ChessBoardGeometry).
+/// between physical board sessions.
 struct ChessBoardGeometryTests {
 
     // MARK: - flippedSquare

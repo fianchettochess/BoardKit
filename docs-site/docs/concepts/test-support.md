@@ -170,8 +170,8 @@ When capabilities do not include `.pieceIdentity`, all `piece` fields are `nil`.
 ## boardkit-emulator
 
 A macOS CLI executable that advertises over real Bluetooth as a physical chess
-board. The Fianchetto apps on a real iPhone or iPad connect to it exactly as
-they would to physical hardware.
+board. An app on a real iPhone or iPad connects to it exactly as it would to
+physical hardware.
 
 All CoreBluetooth code is inside the executable target, guarded by
 `#if os(macOS) && canImport(CoreBluetooth)` — the library targets remain

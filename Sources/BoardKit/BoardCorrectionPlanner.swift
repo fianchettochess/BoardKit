@@ -2,15 +2,14 @@ import Foundation
 import ChessCore
 
 /// Computes the **minimal, identity-aware** set of physical corrections needed to
-/// bring a physical chess board back into agreement with the app's expected Position.
+/// bring a physical chess board back into agreement with the expected Position.
 ///
 /// The board only senses occupancy (occupied / empty per square), never piece
-/// identity. But the app *does* know the full expected Position — so corrections
-/// can be reasoned about by identity (which piece type + color belongs on a
-/// square) rather than by the blunt "this square disagrees" that the old
-/// occupancy-only path emitted.
+/// identity. The caller, however, *does* know the full expected Position — so
+/// corrections can be reasoned about by identity (which piece type + color
+/// belongs on a square) rather than by a blunt "this square disagrees".
 ///
-/// Two properties this delivers over the old logic:
+/// Two properties this delivers:
 ///   (a) **identity-aware** — a square that needs a piece placed names the exact
 ///       piece (e.g. "white knight on f3"), and a stray piece + a missing piece
 ///       that pair up are surfaced as a single *relocate* action rather than two
@@ -23,7 +22,6 @@ import ChessCore
 /// Pure value logic with no actor isolation so it is unit-testable without
 /// standing up a session. Occupancy arrays are file-major (a1..a8, b1..b8, …,
 /// h1..h8) — the same layout the board reports and `BoardDiffResolver` uses.
-/// Renamed from SquareOffCorrectionPlanner on 2026-07-03.
 public enum BoardCorrectionPlanner {
 
     /// A single physical action the user should take to re-sync one square.
@@ -63,7 +61,7 @@ public enum BoardCorrectionPlanner {
     }
 
     /// Build the minimal correction set that reconciles `boardOccupancy` (the
-    /// board's reported per-square presence) with `expected` (the app's Position).
+    /// board's reported per-square presence) with `expected` (the caller's Position).
     ///
     /// Returns an empty array when occupancy already matches — no work, no
     /// prompts. Corrections are emitted ONLY for the squares whose occupancy

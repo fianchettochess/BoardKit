@@ -8,10 +8,6 @@ private let framerLog = OSLog(subsystem: "BoardKit", category: "SquareOff.Framer
 
 // Square Off wire-protocol codec — SquareOffAdapter kernel.
 //
-// Moved from FianchettoKit/Sources/FianchettoKit/SquareOff/SquareOffMessage.swift on
-// 2026-07-03 into the SquareOffAdapter target inside BoardKit. Wire-protocol names
-// (SquareOffMessage, SquareOffFramer, SquareOffParser, SquareOffEvent, SquareOffCommand)
-// are intentionally preserved — this file is Square Off-specific and belongs here.
 // Pure protocol logic: no CoreBluetooth, no UI — the platform transports own the
 // radio and feed bytes through SquareOffFramer.
 
@@ -35,8 +31,8 @@ public enum SquareOffEvent: Equatable, Sendable {
     /// Code "14" response — `14#GO*`. Board acknowledges new game.
     case newGameReady
     /// Synthetic event yielded by the transport when the BLE link drops, so
-    /// downstream consumers (e.g. the platform SquareOffSession) can clear any
-    /// per-move state that would otherwise carry over to the next connection.
+    /// downstream consumers can clear any per-move state that would otherwise
+    /// carry over to the next connection.
     case disconnected
     /// Any other message we haven't modeled.
     case raw(SquareOffMessage)
@@ -82,8 +78,7 @@ public struct SquareOffFramer: Sendable {
     /// link stays up. Real frames are tiny (the largest, a board-state
     /// response, is ~70 bytes), so 64 KB is orders of magnitude above
     /// anything legitimate — hitting it means the stream is garbage,
-    /// and dropping the buffer loses nothing parseable. (V1-REVIEW
-    /// follow-up 2026-06-10 §3 #20)
+    /// and dropping the buffer loses nothing parseable.
     public static let maxBufferSize = 64 * 1024
 
     public mutating func append(_ data: Data) -> [SquareOffMessage] {

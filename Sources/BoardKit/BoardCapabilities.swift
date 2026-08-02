@@ -45,15 +45,18 @@ public struct BoardCapabilities: OptionSet, Sendable {
     /// Reports battery level via `BoardEvent.battery(percent:)`.
     public static let batteryReporting = BoardCapabilities(rawValue: 1 << 5)
 
-    /// True per-piece unique identity (Chessnut Move's 34 micro-robot
-    /// pieces). Implies `.pieceIdentity`. The board supports per-piece
-    /// status polling via opcode 0x0B; the adapter surfaces those
-    /// responses as `.raw` pending a dedicated `BoardEvent` case.
-    /// `identitySnapshot` carries type+color per square (same as
-    /// `.pieceIdentity`), not per-robot object identity.  Session code
-    /// should use `BoardAdapter.pieceStatusRequestData()` and parse
-    /// `.raw` payloads directly rather than expecting `identitySnapshot`
-    /// to carry per-robot tracking data.
+    /// True per-piece unique identity — a board that can tell one knight from
+    /// the other, not merely that a knight is on a square. Implies
+    /// `.pieceIdentity`.
+    ///
+    /// - Warning: The seam does not model this yet. `identitySnapshot` carries
+    ///   type and colour per square exactly as it does for `.pieceIdentity`,
+    ///   and per-piece status arrives as ``BoardEvent/raw``. A consumer that
+    ///   wants it must poll and parse through the adapter it has declared a
+    ///   dependency on — for the Chessnut Move that is
+    ///   `ChessnutMoveAdapter.pieceStatusRequestData()`, whose response shape
+    ///   that adapter documents. Until a first-class event exists, treat this
+    ///   bit as "the hardware can do it", not "the seam can express it".
     public static let perPieceTracking = BoardCapabilities(rawValue: 1 << 6)
 
     /// The board records completed games to internal flash and can replay
@@ -63,20 +66,6 @@ public struct BoardCapabilities: OptionSet, Sendable {
     /// and stateless boards do not.
     public static let gameArchive      = BoardCapabilities(rawValue: 1 << 7)
 
-    // MARK: - Convenience presets
-
-    /// Capabilities common to the Chessnut Air family (Air, Air+, Pro, Go).
-    ///
-    /// Note: Air+ supports multicolor LEDs via the standard LED command;
-    /// that is a wire-level style extension, not a distinct capability bit.
-    public static let chessnutAirFamily: BoardCapabilities = [
-        .occupancySensing, .pieceIdentity, .perSquareLEDs,
-        .moveIndication, .batteryReporting, .gameArchive
-    ]
-
-    /// Capabilities currently exposed by the Square Off adapter. The GKS
-    /// motor command remains quarantined, so `.motorised` is not declared.
-    public static let squareOff: BoardCapabilities = [
-        .occupancySensing, .perSquareLEDs, .moveIndication
-    ]
+    // Capability presets live with the adapter that has those capabilities —
+    // see `extension BoardCapabilities` in each adapter target.
 }

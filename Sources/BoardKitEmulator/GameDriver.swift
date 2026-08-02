@@ -4,7 +4,7 @@ import BoardKit
 import BoardKitTestSupport
 
 /// Plays a game on the emulated board: either a supplied PGN main line or a
-/// seeded legal-random game, perturbed by the `ChaosEngine`, with app-dictated
+/// seeded legal-random game, perturbed by the `ChaosEngine`, with host-dictated
 /// moves (LED commands from the host) executed "physically" after a
 /// configurable human delay.
 ///
@@ -16,7 +16,7 @@ import BoardKitTestSupport
 /// The driver initially assumes it plays BOTH sides from its script (PGN or
 /// seeded random). The first time the host dictates a move for a colour via
 /// an LED from/to pair, that colour is marked host-owned and the think-timer
-/// stops auto-playing it — matching the Fianchetto OTB flow where the app's
+/// stops auto-playing it — matching the over-the-board flow where a host's
 /// engine replies arrive as LED indications that the human then executes.
 public actor GameDriver {
 

@@ -15,8 +15,7 @@ import SquareOffAdapter
 ///
 /// ## Transport identity
 ///
-/// GATT + name per the Fianchetto `SquareOffTransport` constants
-/// (hardware-verified host side):
+/// GATT + name per the hardware-verified host transport constants:
 /// - Advertised marker service `D804B643-6CE7-4E81-9F8A-CE0F699085EB`
 ///   (broadcast in the scan response by real boards; no characteristics used).
 /// - Nordic UART Service `6e400001-…` as the data channel:
@@ -26,14 +25,14 @@ import SquareOffAdapter
 ///   (boards have shipped as both "Square Off" and "Squareoff").
 public struct SquareOffPersonality: BoardPersonality {
 
-    // MARK: - Transport constants (mirrors Fianchetto SquareOffTransport)
+    // MARK: - Transport constants (mirrors the host transport)
 
-    public static let advertisedServiceUUID = "D804B643-6CE7-4E81-9F8A-CE0F699085EB"
-    public static let nusServiceUUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+    public static let advertisedServiceUUID = SquareOffGATT.advertisedService
+    public static let nusServiceUUID = SquareOffGATT.nordicUART
     /// Host→board command characteristic (write / writeWithoutResponse).
-    public static let rxCharUUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+    public static let rxCharUUID = SquareOffGATT.nusRX
     /// Board→host frame characteristic (notify).
-    public static let txCharUUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+    public static let txCharUUID = SquareOffGATT.nusTX
 
     // MARK: - State
 

@@ -514,7 +514,7 @@ public struct ChessUpAdapter: BoardAdapter {
             whiteType: 0, whiteLevel: 1, whiteLock: 0, // human
             blackType: 0, blackLevel: 1, blackLock: 0, // human
             hintLimit: 0,                              // no hints
-            whiteRemote: 0, blackRemote: 0,            // moves come from the board, not the app
+            whiteRemote: 0, blackRemote: 0,            // moves come from the board, not the host
             deviceUser: 0
         )
     }

@@ -166,7 +166,7 @@ import BoardKit
 
 // After the engine has chosen and applied a move:
 let gate = BoardExecutionGate(move: engineMove, positionBefore: beforePosition)
-showBanner(gate.humanDescription)   // "Play Nf3 on the board"
+showBanner("Play \(gate.san) on the board")   // gate.san == "Nf3"
 
 for await event in transport.events {
     guard case .squareSensed(let sq, let isLift, _) = event else { continue }

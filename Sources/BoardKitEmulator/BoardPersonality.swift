@@ -78,8 +78,8 @@ public struct GATTServiceSpec: Equatable, Sendable {
 /// `CBPeripheralManager.startAdvertising` supports exactly two keys —
 /// `CBAdvertisementDataLocalNameKey` and `CBAdvertisementDataServiceUUIDsKey`.
 /// Manufacturer data, TX power, and scan-response control are not available
-/// to peripheral-mode apps. Both Fianchetto host transports discover by
-/// (name prefix + service UUID), so those two keys are sufficient.
+/// to peripheral-mode apps. Host transports discover by (name prefix +
+/// service UUID), so those two keys are sufficient.
 public struct GATTLayout: Equatable, Sendable {
     public let services: [GATTServiceSpec]
     public let advertisedServiceUUIDs: [String]
@@ -122,7 +122,7 @@ public enum PeripheralAction: Equatable, Sendable {
     /// Send a notification frame back to the host.
     case notify(PersonalityFrame)
     /// The host set the board's LEDs. The game driver interprets a lit
-    /// from/to pair as "the app dictates this move — execute it physically
+    /// from/to pair as "the host dictates this move — execute it physically
     /// after a human delay".
     case setLEDs([String])
     /// The host asked the board to start a new game (Square Off "14#1*").

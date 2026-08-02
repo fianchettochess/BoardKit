@@ -86,41 +86,38 @@ func onBoardUpdate(isOutOfSync: Bool, clockIsRunning: Bool, activeColor: PieceCo
 
 ## BoardReconnectPolicy
 
-A pure-value reconnect policy for BLE transports. Encodes the reconnect
-schedule for unexpected disconnections (BLE drop, not user-initiated).
+A pure-value reconnect schedule for unexpected disconnections (a link drop,
+not a user-initiated one). How long to wait and when to stop are your
+product's patience rather than the hardware's, so both are parameters.
 
 ```swift
 public struct BoardReconnectPolicy: Sendable {
     public let maxAttempts: Int
+    public let delays: [TimeInterval]
 
-    public init(maxAttempts: Int = 5)
+    public init(maxAttempts: Int = 5, delays: [TimeInterval] = [2, 4, 8])
     public func nextDelay(attempt: Int) -> TimeInterval?
 }
 ```
 
 The transport calls `nextDelay(attempt:)` before each reconnect attempt.
-`nil` means "give up" — the attempt is out of the valid range.
+`nil` means "give up": the attempt is outside `1...maxAttempts`.
 
-### Default schedule (maxAttempts = 5)
-
-| Attempt | Delay |
-|---|---|
-| 1 | 2 s |
-| 2 | 4 s |
-| 3–5 | 8 s |
-| > 5 | nil (give up) |
+Attempts past the end of `delays` repeat its last entry, so a short schedule
+describes a ramp that then holds steady. The default `[2, 4, 8]` over five
+attempts waits 2 s, 4 s, then 8 s three times.
 
 ### Example
 
 ```swift
-let policy = BoardReconnectPolicy()   // default 5 attempts
+let policy = BoardReconnectPolicy()                    // 2 s, 4 s, then 8 s
+// let policy = BoardReconnectPolicy(delays: [0.5, 1]) // impatient, two attempts
 
 for attempt in 1... {
     guard let delay = policy.nextDelay(attempt: attempt) else {
         transport.state = .disconnected
         break
     }
-    // Surface progress in UI: "Reconnecting (attempt N/5)…"
     transport.state = .reconnecting(attempt: attempt)
     try await Task.sleep(for: .seconds(delay))
     await transport.attemptReconnect()

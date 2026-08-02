@@ -6,16 +6,54 @@ import BoardKit
 //
 // Covers Square Off Pro, Kingdom Set (GKS), and Gen-1 motorised boards.
 //
-// HARDWARE STATUS: Hardware-tested in-app (Fianchetto iOS/Android production).
-// Protocol codec migrated from the FianchettoKit SquareOffTransport on
-// 2026-07-03; field-verified against physical Square Off Pro and GKS hardware.
-// executeMove quarantined (motor semantics unverified); all other BoardAdapter
-// methods are production-grade.
+// HARDWARE STATUS: field-verified against physical Square Off Pro and GKS
+// hardware, and shipped in production iOS and Android clients. executeMove
+// quarantined (motor semantics unverified); all other BoardAdapter methods are
+// production-grade.
 //
 // Sources:
-//   Protocol reverse-engineered in-app from captured BLE traffic and field
-//   testing on physical Square Off Pro and Kingdom Set boards. No third-party
-//   driver consulted (first-party reverse engineering only).
+//   Protocol reverse-engineered from captured BLE traffic and field testing on
+//   physical Square Off Pro and Kingdom Set boards. No third-party driver
+//   consulted (first-party reverse engineering only).
+
+extension BoardCapabilities {
+    /// Capabilities exposed by the Square Off adapter.
+    ///
+    /// Square Off boards are occupancy-only — no piece identity — with
+    /// per-square LEDs. The GKS / Gen-1 variants are motorised, but
+    /// `.motorised` is not declared while `executeMove` stays quarantined
+    /// pending hardware verification of the motor command's semantics.
+    public static let squareOff: BoardCapabilities = [
+        .occupancySensing, .perSquareLEDs, .moveIndication
+    ]
+}
+
+/// BLE discovery and connection identity for Square Off boards.
+///
+/// A transport scans on ``advertisedService`` (a proprietary marker service the
+/// boards broadcast in the scan response) or on ``nordicUART``, then opens the
+/// data channel on the Nordic UART Service: write commands to ``nusRX``,
+/// subscribe to ``nusTX`` for board frames.
+public enum SquareOffGATT {
+    /// Proprietary marker service, broadcast in the scan response. It appears
+    /// in advertising data only and exposes no characteristics.
+    public static let advertisedService = "D804B643-6CE7-4E81-9F8A-CE0F699085EB"
+    /// Nordic UART Service — the data channel.
+    public static let nordicUART = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+    /// Host→board write characteristic.
+    public static let nusRX      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+    /// Board→host notify characteristic.
+    public static let nusTX      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+
+    /// Whether `name` looks like a Square Off board.
+    ///
+    /// Case-insensitive substring match on "square": boards have shipped
+    /// advertising as both "Square Off" and "Squareoff". The name is
+    /// user-renameable, so this is a hint — scan by service UUID.
+    public static func isSquareOff(name: String) -> Bool {
+        name.range(of: "square", options: .caseInsensitive) != nil
+    }
+}
 
 /// `BoardAdapter` implementation for the Square Off Pro (and compatible GKS / Gen-1)
 /// family of boards.
@@ -45,8 +83,8 @@ import BoardKit
 ///
 /// **handshakeCommands(isReconnect:)** encodes the safe reconnect rule:
 ///   - First connect:  `[(.startSession, 250ms), (.requestState, 150ms)]`
-///     (the 250ms is the hardware-proven link-settle delay both app
-///     transports used as `asyncAfter(0.25)`; do not "optimize" it away)
+///     (the 250ms is the hardware-proven link-settle delay the shipping
+///     clients use; do not "optimize" it away)
 ///   - Reconnect:      `[(.requestState, 250ms)]`  (NO startNewGame — board state preserved)
 ///
 /// ## Capabilities
@@ -115,14 +153,14 @@ public struct SquareOffAdapter: BoardAdapter {
             // Mid-game reconnect: request the current board state ONLY so the session
             // can reconcile the occupancy snapshot. Do not send startSession (startNewGame)
             // — the board would reset its game state, disrupting the in-progress game.
-            // Hardware-verified safe reconnect rule, shipped 2026-07-03.
+            // Hardware-verified safe reconnect rule.
             return [(.requestState, 0.25)] // 250ms
         } else {
-            // Fresh connection: 250ms link-settle before startSession (mirrors the
-            // hardware-verified sequence: iOS SquareOffTransport.swift asyncAfter(0.25)
-            // before sendInitHandshake, Android SquareOffTransport.swift asyncAfter(0.25)
-            // before sendInitHandshake), then 150ms before requestBoardState so the board
-            // has time to process the new-game command (matching the field-tested clients).
+            // Fresh connection: 250ms link-settle before startSession (the
+            // hardware-verified delay the shipping iOS and Android clients wait
+            // before their init handshake), then 150ms before requestBoardState so
+            // the board has time to process the new-game command (matching the
+            // field-tested clients).
             return [
                 (.startSession, 0.25), // 250ms
                 (.requestState, 0.15), // 150ms

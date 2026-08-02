@@ -2,9 +2,9 @@ import Foundation
 import ChessCore
 
 /// Pure-logic state machine tracking whether the human has physically
-/// executed an app-dictated move on a physical chess board.
+/// executed a session-dictated move on a physical chess board.
 ///
-/// After the app plays a move (engine reply, analysis navigation), the
+/// After the session plays a move (engine reply, analysis navigation), the
 /// session layer instantiates a gate with the expected move and the
 /// position before it was applied, then routes every board field event
 /// through `feed(square:isLift:)` until the gate reaches `.executed` or
@@ -56,9 +56,13 @@ public final class BoardExecutionGate {
     /// The UCI string for the expected move (e.g. "e1g1", "e7e8q").
     public let expectedUCI: String
 
-    /// Human-readable prompt for the OTB banner while the move is pending.
-    /// Example: "Play O-O on the board"
-    public let humanDescription: String
+    /// SAN for the expected move, e.g. "O-O", "Nf3", "exd6 e.p.".
+    ///
+    /// Provided so a consumer can name the move it is waiting for — in a
+    /// prompt, a log line, or an accessibility announcement — without
+    /// regenerating legal moves to derive it. The gate does not compose the
+    /// sentence: the wording and its language are the consumer's.
+    public let san: String
 
     // MARK: - Immutable effect sets (computed at init)
 
@@ -86,23 +90,20 @@ public final class BoardExecutionGate {
     /// Create a gate for `move` played from `positionBefore`.
     ///
     /// - Parameters:
-    ///   - move: The legal move the app has applied to the game tree. Must be
+    ///   - move: The legal move the session has applied to the game tree. Must be
     ///     a move that is legal in `positionBefore`.
     ///   - positionBefore: The board position *before* `move`. Used only to
-    ///     compute the SAN annotation for `humanDescription`; the gate itself
-    ///     is purely geometric.
+    ///     derive `san`; the gate's own logic is purely geometric.
     public init(move: Move, positionBefore: Position) {
         self.expectedUCI = move.uci
         self.fromSquare  = move.from.algebraic
         self.toSquare    = move.to.algebraic
 
-        // Generate SAN for the human prompt. `algebraicNotation` is pure —
-        // no board mutation, no async, no CoreML.
+        // `algebraicNotation` is pure — no board mutation, no async.
         let legalMoves = MoveGenerator.legalMoves(for: positionBefore)
-        let san = MoveGenerator.algebraicNotation(
+        self.san = MoveGenerator.algebraicNotation(
             for: move, in: positionBefore, legalMoves: legalMoves
         )
-        self.humanDescription = "Play \(san) on the board"
 
         let (eff, lifts, places) = Self.physicalEffects(move: move)
         self.effectSquares  = eff

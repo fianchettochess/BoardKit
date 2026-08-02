@@ -3,13 +3,10 @@ import BoardKit
 import ChessCore
 
 /// Tests for `BoardExecutionGate` — the pure-logic state machine that
-/// verifies the human has physically executed an app-dictated move on the
+/// verifies the human has physically executed a session-dictated move on the
 /// physical chess board.
 ///
-/// Migrated from FianchettoKitTests/SquareOffExecutionGateTests.swift on
-/// 2026-07-03 (renamed SquareOffExecutionGate → BoardExecutionGate).
-///
-/// Coverage plan (per design spec):
+/// Coverage:
 ///   • Simple move
 ///   • Capture — attacker-first order
 ///   • Capture — captured-piece-first order
@@ -22,7 +19,7 @@ import ChessCore
 ///   • Deviation on an unexpected square
 ///   • Deviation is terminal
 ///   • Executed is terminal (all further calls return .executed)
-///   • expectedUCI and humanDescription
+///   • expectedUCI and san
 struct BoardExecutionGateTests {
 
     // MARK: - Helpers
@@ -422,18 +419,16 @@ struct BoardExecutionGateTests {
         #expect(gate.expectedUCI == "e2e4")
     }
 
-    @Test func testHumanDescriptionContainsSAN() {
+    @Test func testSANIsTheMovesAlgebraicNotation() {
         let m = move("e2e4", in: start)
         let gate = BoardExecutionGate(move: m, positionBefore: start)
-        #expect(gate.humanDescription.contains("on the board"), "humanDescription should end with 'on the board'; got '\(gate.humanDescription)'")
-        // SAN for e2e4 is "e4" (pawn push).
-        #expect(gate.humanDescription.contains("e4"), "humanDescription should contain the SAN; got '\(gate.humanDescription)'")
+        #expect(gate.san == "e4", "SAN for a pawn push is the destination square; got '\(gate.san)'")
     }
 
-    @Test func testCastlingHumanDescriptionContainsCastleSAN() {
+    @Test func testCastlingSANIsTheCastleGlyph() {
         let position = Position(fen: castleKingsideFEN)!
         let m = move("e1g1", in: position)
         let gate = BoardExecutionGate(move: m, positionBefore: position)
-        #expect(gate.humanDescription.contains("O-O"), "Castle humanDescription should contain O-O; got '\(gate.humanDescription)'")
+        #expect(gate.san == "O-O", "Castling SAN must be O-O; got '\(gate.san)'")
     }
 }

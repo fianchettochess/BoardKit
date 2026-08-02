@@ -79,9 +79,9 @@ hardware.
 
 ## SquareOffAdapter
 
-Square Off Pro and Kingdom Set (GKS). Field-proven in the Fianchetto iOS and
-Android production apps. The connection, field-update, board-state, LED,
-handshake, and reconnect paths are hardware-verified.
+Square Off Pro and Kingdom Set (GKS). Field-proven in shipping iOS and Android
+clients. The connection, field-update, board-state, LED, handshake, and
+reconnect paths are hardware-verified.
 
 The `executeMove` motor command is **quarantined** — its wire semantics may
 auto-move on motorized GKS boards and are not fully confirmed. The adapter

@@ -2,10 +2,8 @@ import Testing
 import BoardKit
 import ChessCore
 
-/// Covers `BoardSyncGate`, the pure-logic state machine behind the OTB view's
-/// clock-pause + haptic on physical board desync. Migrated from
-/// FianchettoKitTests/SquareOffSyncGateTests.swift on 2026-07-03
-/// (renamed SquareOffSyncGate → BoardSyncGate).
+/// Covers `BoardSyncGate`, the pure-logic state machine behind an
+/// over-the-board view's clock-pause + haptic on physical board desync.
 struct BoardSyncGateTests {
 
     @Test func testSteadyStateSyncedReturnsNone() {
@@ -81,7 +79,6 @@ struct BoardSyncGateTests {
         // advanced to White. On exit-from-desync the gate must resume
         // the clock on whichever side is on the move NOW (White), not
         // on the side that was on the move when we paused (Black).
-        // (V1-REVIEW 2026-06-09 §2 SO High #3)
         var gate = BoardSyncGate()
         _ = gate.update(isOutOfSync: true, clockIsRunning: true, currentActiveColor: .black)
         gate.acknowledgeHaptic()

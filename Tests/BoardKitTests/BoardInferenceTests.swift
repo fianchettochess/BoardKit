@@ -5,9 +5,6 @@ import ChessCore
 // MARK: - OccupancyMoveInference
 
 /// Tests for `OccupancyMoveInference` and `BoardDiffResolver` / `BoardCorrectionPlanner`.
-/// Migrated from FianchettoKitTests/SquareOffInferenceTests.swift on 2026-07-03
-/// (renamed SquareOffMoveInference → OccupancyMoveInference, SquareOffDiffResolver →
-/// BoardDiffResolver, SquareOffCorrectionPlanner → BoardCorrectionPlanner).
 struct OccupancyMoveInferenceTests {
 
     // MARK: - Helpers
@@ -26,8 +23,8 @@ struct OccupancyMoveInferenceTests {
     }
 
     /// Verifies that for every candidate UCI the inference produced, exactly one
-    /// pairs with a legal move in the given position. This mirrors how
-    /// `SquareOffSession.tryApply` filters candidates.
+    /// pairs with a legal move in the given position. This mirrors how a
+    /// session filters candidates before applying one.
     private func pickLegal(_ candidates: [String], in position: Position) -> String? {
         let legal = MoveGenerator.legalMoves(for: position)
         for uci in candidates {
@@ -38,10 +35,9 @@ struct OccupancyMoveInferenceTests {
         return nil
     }
 
-    /// Mirrors the shape-#2 legality oracle `SquareOffSession` installs on
-    /// the inference: castling with the lifted rook must still be encoded as
+    /// Mirrors the shape-#2 legality oracle a session installs on the
+    /// inference: castling with the lifted rook must still be encoded as
     /// an `isCastling` move in the position's legal-move list.
-    /// (V1-REVIEW follow-up 2026-06-10 §3 rec #3)
     private func castleOracle(for position: Position) -> (String) -> Bool {
         let kingCastleUCI = ["h1": "e1g1", "a1": "e1c1", "h8": "e8g8", "a8": "e8c8"]
         let legal = MoveGenerator.legalMoves(for: position)
@@ -297,7 +293,7 @@ struct OccupancyMoveInferenceTests {
         #expect(candidates(afterKing).contains("e8c8"))
     }
 
-    // MARK: - Castling: legal-filter selection (V1-REVIEW follow-up 2026-06-10 §3 rec #3)
+    // MARK: - Castling: legal-filter selection
 
     /// Kingside-castle-ready: White king e1, rook h1, f1/g1 empty, full
     /// rights — e1g1 (O-O), h1f1 (Rf1), h1g1 (Rg1) and e1f1 (Kf1) are all
@@ -368,8 +364,8 @@ struct OccupancyMoveInferenceTests {
     }
 
     @Test func testPostCastleRookLegDoesNotDeferAndNextMoveSurvives() {
-        // App state right after White's O-O committed (natural king-first
-        // physical order): the app already has Kg1/Rf1 but the physical rook
+        // Game state right after White's O-O committed (natural king-first
+        // physical order): the game already has Kg1/Rf1 but the physical rook
         // is still on h1. The rook leg (lift h1, place f1) matches deferral
         // shape #2 — before the legality gate it deferred forever and the
         // stale slots wiped the opponent's next lift. With the oracle bound
@@ -382,7 +378,7 @@ struct OccupancyMoveInferenceTests {
         let afterRookLeg = engine.handle(square: "f1", isLift: false)
         let cands = candidates(afterRookLeg)
         #expect(cands == ["h1f1"], "Post-castle rook leg must surface candidates, not defer; got \(afterRookLeg)")
-        // h1 is empty in the app, so no candidate is legal: the session falls
+        // h1 is empty in the game, so no candidate is legal: the session falls
         // back to the resolver (board == app, nothing to do) and resets the
         // inference — mirror that reset here.
         #expect(pickLegal(cands, in: postCastle) == nil)
@@ -464,7 +460,7 @@ struct OccupancyMoveInferenceTests {
         }
     }
 
-    // MARK: - Promotion-aware candidates (GAP 3)
+    // MARK: - Promotion-aware candidates
 
     @Test func testWhitePromotionEmitsFiveCharVariants() {
         // e7→e8: white pawn promotion. All four 5-char UCIs must appear.

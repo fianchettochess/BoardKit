@@ -2,8 +2,8 @@
 //
 // Advertises over real BLE as a Square Off Pro or Chessnut Air and plays
 // games (PGN or seeded legal-random) with a deterministic chaos layer
-// modelling fallible-human piece handling, so the Fianchetto apps on a real
-// phone can connect to it as if it were hardware.
+// modelling fallible-human piece handling, so a host app on a real phone can
+// connect to it as if it were hardware.
 //
 // LIVE-RUN NOTE (honest limits): real advertising requires the macOS
 // Bluetooth TCC permission prompt to be accepted and a real central to

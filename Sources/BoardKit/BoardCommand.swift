@@ -31,10 +31,9 @@ public enum BoardCommand: Sendable {
     /// Illuminate a set of squares on the board's LEDs.
     ///
     /// `squares` is an array of algebraic strings (e.g. `["e2", "e4"]`),
-    /// consistent with `SquareOffCommand.setLeds(squares: [String])` that
-    /// this generalises. Using `[String]` avoids forced conversion at
-    /// every adapter call site; callers with typed `Square` values call
-    /// `.algebraic` first.
+    /// matching `BoardEvent.squareSensed` — see the note there on why
+    /// squares cross this seam as strings. Callers holding typed `Square`
+    /// values call `.algebraic` first.
     ///
     /// `style` is advisory. Occupancy-LED adapters (Square Off, DGT
     /// Pegasus) use a single on/off LED per square and ignore the style.

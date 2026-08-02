@@ -14,9 +14,9 @@ import CoreBluetooth
 ///
 /// macOS peripheral-mode advertising supports exactly TWO keys —
 /// `CBAdvertisementDataLocalNameKey` and `CBAdvertisementDataServiceUUIDsKey`.
-/// No manufacturer data, no TX-power, no raw advertisement control. Both
-/// Fianchetto host transports discover boards by (name filter + service
-/// UUID), so these two keys are sufficient to be discovered as hardware.
+/// No manufacturer data, no TX-power, no raw advertisement control. Host
+/// transports discover boards by (name filter + service UUID), so these two
+/// keys are sufficient to be discovered as hardware.
 ///
 /// ## Live-run honesty
 ///

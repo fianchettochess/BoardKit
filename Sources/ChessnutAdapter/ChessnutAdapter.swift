@@ -22,6 +22,19 @@ import BoardKit
 // Where sources disagreed, the REFERENCE implementations are followed and
 // each choice is recorded in a comment citing the discrepancy.
 
+// MARK: - BoardCapabilities preset
+
+extension BoardCapabilities {
+    /// Capabilities common to the Chessnut Air family (Air, Air+, Pro, Go).
+    ///
+    /// Air+ drives multicolor LEDs through the standard LED command; that is a
+    /// wire-level style extension rather than a distinct capability.
+    public static let chessnutAirFamily: BoardCapabilities = [
+        .occupancySensing, .pieceIdentity, .perSquareLEDs,
+        .moveIndication, .batteryReporting, .gameArchive
+    ]
+}
+
 // MARK: - GATT constants
 
 /// UUIDs for the Chessnut Air-family classic profile.

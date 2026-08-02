@@ -1,10 +1,9 @@
 # Installation
 
 BoardKit is a Swift Package Manager library. Its only runtime dependency is
-[ChessCore](https://github.com/fianchettochess/ChessCore) 0.8.0 (MIT), which it
-pins exactly until the private packages make their public debut. No third-party
-networking, UI, or platform-specific libraries are required by the library
-targets.
+[ChessCore](https://github.com/fianchettochess/ChessCore) 0.8.0 (MIT), pinned
+exactly. No third-party networking, UI, or platform-specific libraries are
+required by the library targets.
 
 ## Requirements
 
@@ -25,8 +24,10 @@ uses throwing `FileHandle` APIs (available since iOS 13.4 / macOS 10.15.4).
 
 ### Local ChessCore checkout
 
-When a valid `../ChessCore` sibling checkout is present, BoardKit selects it
-automatically. Standalone consumers resolve the exact versioned dependency.
+The manifest declares one ordinary versioned dependency and never inspects the
+filesystem. To develop against a local ChessCore alongside BoardKit, use
+`swift package edit ChessCore` or a root-level `.package(path:)` override in
+the package that consumes both.
 
 ### Remote dependency
 

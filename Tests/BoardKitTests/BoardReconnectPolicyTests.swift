@@ -3,9 +3,7 @@ import Foundation
 import BoardKit
 
 /// Tests for `BoardReconnectPolicy` — the pure-value reconnect schedule
-/// shared by the iOS and Android BLE transports. Migrated from
-/// FianchettoKitTests/SquareOffReconnectPolicyTests.swift on 2026-07-03
-/// (renamed SquareOffReconnectPolicy → BoardReconnectPolicy).
+/// shared by the iOS and Android BLE transports.
 struct BoardReconnectPolicyTests {
 
     private let policy = BoardReconnectPolicy()
@@ -65,6 +63,35 @@ struct BoardReconnectPolicyTests {
         #expect(custom.nextDelay(attempt: 2) == 4)
         #expect(custom.nextDelay(attempt: 3) == 8)
         #expect(custom.nextDelay(attempt: 4) == nil, "Fourth attempt exceeds custom maxAttempts of 3")
+    }
+
+    // MARK: - Injected schedules
+
+    @Test func testInjectedScheduleIsUsedVerbatim() {
+        let eager = BoardReconnectPolicy(delays: [0.5, 1, 2])
+        #expect(eager.nextDelay(attempt: 1) == 0.5)
+        #expect(eager.nextDelay(attempt: 2) == 1)
+        #expect(eager.nextDelay(attempt: 3) == 2)
+    }
+
+    @Test func testScheduleShorterThanMaxAttemptsHoldsItsLastValue() {
+        let policy = BoardReconnectPolicy(maxAttempts: 6, delays: [1, 3])
+        #expect(policy.nextDelay(attempt: 2) == 3)
+        #expect(policy.nextDelay(attempt: 3) == 3, "attempts past the schedule hold the last delay")
+        #expect(policy.nextDelay(attempt: 6) == 3)
+        #expect(policy.nextDelay(attempt: 7) == nil, "maxAttempts still bounds the retry loop")
+    }
+
+    @Test func testScheduleLongerThanMaxAttemptsIsBoundedByMaxAttempts() {
+        let policy = BoardReconnectPolicy(maxAttempts: 2, delays: [1, 2, 3, 4])
+        #expect(policy.nextDelay(attempt: 2) == 2)
+        #expect(policy.nextDelay(attempt: 3) == nil)
+    }
+
+    @Test func testEmptyScheduleFallsBackToTheDefault() {
+        let policy = BoardReconnectPolicy(delays: [])
+        #expect(policy.delays == [2, 4, 8])
+        #expect(policy.nextDelay(attempt: 1) == 2)
     }
 
     // MARK: - Full schedule is monotonically non-decreasing

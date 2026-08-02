@@ -5,7 +5,7 @@ import ChessCore
 /// game line (common in club/casual play to undo an obvious blunder).
 ///
 /// This is the backward complement to `BoardDiffResolver`, which only searches
-/// FORWARD from the app's position. A take-back reverts to an ancestor, so it is
+/// FORWARD from the current position. A take-back reverts to an ancestor, so it is
 /// never forward-reachable — the session reaches this detector only after the
 /// forward paths (legal-candidate match, then `BoardDiffResolver`) have failed,
 /// so the two never compete.
@@ -18,14 +18,14 @@ import ChessCore
 /// intended single- or few-ply take-back.
 public enum BoardTakebackDetector {
 
-    /// Number of plies to undo so the app matches the board, or nil if the board
+    /// Number of plies to undo so the game matches the board, or nil if the board
     /// occupancy matches no ancestor.
     ///
     /// - Parameters:
     ///   - boardOccupancy: the board's reported occupancy (`[Bool]`, 64, file-major
     ///     a1..a8,b1..b8,…,h1..h8 — same layout as `BoardDiffResolver`).
     ///   - ancestorPositions: positions reachable by undoing 1, 2, 3, … plies from
-    ///     the app's CURRENT position. Index 0 = one ply back, index 1 = two plies
+    ///     the game's CURRENT position. Index 0 = one ply back, index 1 = two plies
     ///     back, etc. The caller bounds this list (e.g. the last few plies) so a
     ///     distant coincidental occupancy can't trigger a huge rollback.
     /// - Returns: the shallowest matching depth (1-based), or nil.

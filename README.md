@@ -7,9 +7,9 @@
 [![Linux CI](https://github.com/fianchettochess/BoardKit/actions/workflows/ci-linux.yml/badge.svg)](https://github.com/fianchettochess/BoardKit/actions/workflows/ci-linux.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A Swift package that defines the board-adapter seam between physical chess
-boards and the Fianchetto engine stack, and ships the board-agnostic kernels
-built on top of that seam.
+A Swift package that defines the adapter seam between physical chess boards
+(BLE and USB-HID) and a chess engine or kernel stack, and ships the
+board-agnostic kernels built on top of that seam.
 
 ## Scope
 
@@ -17,9 +17,8 @@ built on top of that seam.
 vocabulary (`BoardEvent`, `BoardCommand`, `BoardCapabilities`, `BoardAdapter`,
 `BoardTransport`) and ships the board-agnostic kernels built on it (move
 inference, execution gate, diff resolver, correction planner, takeback
-detector, sync gate, reconnect policy), so downstream session shells (for example,
-FianchettoKit's `EBoardSessionCore`/`EBoardShellKernel`) are written once and
-work with any physical board.
+detector, sync gate, reconnect policy), so a session shell is written once
+against those kernels and then works with any physical board.
 
 **No library target contains BLE or USB-HID code.** Transport implementations
 live in the consuming app targets (they import CoreBluetooth or SkipFuse);
@@ -105,8 +104,8 @@ move an adapter into the hardware-tested group; see the contribution flow below.
 
 ### Per-board status notes
 
-- **Square Off Pro / Kingdom Set (GKS):** Field-proven in the Fianchetto iOS
-  and Android production apps. The connection, field-update, board-state, LED,
+- **Square Off Pro / Kingdom Set (GKS):** Field-proven in shipping iOS and
+  Android clients. The connection, field-update, board-state, LED,
   handshake, and reconnect paths are hardware-verified. The `executeMove`
   motor command is quarantined pending confirmed wire semantics.
 
@@ -207,8 +206,7 @@ move an adapter into the hardware-tested group; see the contribution flow below.
   Locked by the `G1` golden regression in `ChessUpAdapterTests`.
 
   **Remaining hardware checks:** 0x99 move-indication LEDs on CU2; the 0xFD
-  occupancy stream (0x50 enable) on CU2; 0x66 FEN loading on CU2; and the Android
-  Kotlin manager (Swift side compiled; ChessUpBleManager.kt not yet written).
+  occupancy stream (0x50 enable) on CU2; and 0x66 FEN loading on CU2.
 
 ## Source attributions by adapter
 
@@ -258,8 +256,8 @@ are ignored.
 | `event connected`    | Inject `.connected` lifecycle event |
 | `event disconnected` | Inject `.disconnected(error: nil)` lifecycle event |
 
-Example fixture (format illustration — see `Captures/` for real captured
-sessions):
+Example fixture (format illustration; `Captures/` holds generated sessions —
+`boardkit-emulator` output at a fixed seed, not hardware traces):
 
 ```text
 # DGT Pegasus — first board dump (initial position, White to move)
@@ -316,9 +314,11 @@ swift test
 On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
 image through the same versioned ChessCore dependency path used by consumers.
 
-The manifest pins ChessCore 0.8.0 for standalone consumers. In the coordinated
-Fianchetto checkout, a sibling `../ChessCore` package is selected automatically
-so both private packages can advance together before their public debut.
+The manifest declares one ordinary versioned ChessCore dependency and knows
+nothing about how your checkout is arranged. To develop against a local
+ChessCore alongside BoardKit, use `swift package edit ChessCore` or a
+root-level `.package(path:)` override — the published manifest stays
+deterministic either way.
 
 ## Releasing
 

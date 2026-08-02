@@ -65,7 +65,7 @@ until the gate reaches `.executed` or `.deviated`.
 ```swift
 public final class BoardExecutionGate {
     public let expectedUCI: String
-    public let humanDescription: String   // e.g. "Play Nf3 on the board"
+    public let san: String                // e.g. "Nf3" — you write the sentence
 
     public init(move: Move, positionBefore: Position)
     public func feed(square: String, isLift: Bool) -> State

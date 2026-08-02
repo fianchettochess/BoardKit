@@ -153,9 +153,9 @@ public enum BoardTransportState: Equatable, Sendable {
 subscription is active. It deliberately precedes the adapter handshake; wait
 for `BoardEvent.ready` before treating the board's sensor stream as ready.
 
-The `.reconnecting(attempt:)` case is 1-indexed. Display as
-"Reconnecting (attempt N/5)…" alongside a `BoardReconnectPolicy` that
-supplies the per-attempt delay schedule.
+The `.reconnecting(attempt:)` case is 1-indexed. Pair it with the
+`maxAttempts` of the `BoardReconnectPolicy` driving the loop if you want to
+report progress.
 
 ### DiscoveredBoardDevice
 
