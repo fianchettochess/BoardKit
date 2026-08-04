@@ -95,13 +95,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
           printf 'commit=%s\n' "$TAG_COMMIT" >> "$GITHUB_OUTPUT"
 
-      # Keep this version synchronized with the exact private-package pin in
-      # Package.swift and exercise the standalone remote dependency path.
-      - name: Resolve exact ChessCore 0.8.0
+      # Exercise the standalone remote dependency path using Package.swift's
+      # declared 0.9.x compatibility range. Do not impose a second version
+      # requirement here: the manifest is the release contract.
+      - name: Resolve declared ChessCore dependency
         working-directory: BoardKit
-        run: |
-          swift package resolve
-          swift package resolve --version 0.8.0 ChessCore
+        run: swift package resolve
 
       - name: Build
         working-directory: BoardKit
