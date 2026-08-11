@@ -36,20 +36,31 @@ jobs:
           path: BoardKit
           persist-credentials: false
 
-      - name: Configure private package access when available
+      # ChessCore is private, so this job cannot resolve the manifest without a
+      # token. Fail HERE with a usable message rather than letting `swift build`
+      # die on "could not read Username for 'https://github.com'" several steps
+      # later. Dependabot-triggered runs read from the DEPENDABOT secret scope,
+      # not the Actions one, so DOCS_PACKAGES_TOKEN must exist in BOTH scopes or
+      # every Dependabot PR fails here — see `gh secret set --app dependabot`.
+      - name: Configure private ChessCore access
         shell: bash
         env:
           PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
         run: |
-          if [[ -n "${PACKAGE_TOKEN}" ]]; then
-            AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
-            echo "::add-mask::${AUTH_HEADER}"
-            {
-              echo 'GIT_CONFIG_COUNT=1'
-              echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
-              echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
-            } >> "${GITHUB_ENV}"
+          if [[ -z "${PACKAGE_TOKEN}" ]]; then
+            echo "::error::DOCS_PACKAGES_TOKEN is unset. BoardKit cannot resolve" \
+                 "the private ChessCore dependency without it. If this run was" \
+                 "triggered by Dependabot, add the token to the repository's" \
+                 "Dependabot secrets as well as its Actions secrets."
+            exit 1
           fi
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${AUTH_HEADER}"
+          {
+            echo 'GIT_CONFIG_COUNT=1'
+            echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+            echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
+          } >> "${GITHUB_ENV}"
 
       - name: Build
         working-directory: BoardKit
