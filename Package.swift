@@ -100,6 +100,10 @@ let package = Package(
         // Protocol-pinned against mono424/chessupdriver; ChessUp 2
         // hardware-verified (full 90-ply game, Android + iOS, 2026-07).
         .library(name: "ChessUpAdapter", targets: ["ChessUpAdapter"]),
+        // Open Chess Arduino-based smart chessboard adapter.
+        // Hall effect sensors + NeoPixel LEDs; serial/WiFi protocol.
+        // Protocol-designed only — awaiting firmware extension.
+        .library(name: "OpenChessAdapter", targets: ["OpenChessAdapter"]),
         // Test support: ReplayTransport + SimulatedBoard. Listed as a product
         // so test-only app targets can depend on it. Not part of the production
         // graph.
@@ -204,6 +208,18 @@ let package = Package(
             path: "Sources/ChessUpAdapter"
         ),
 
+        // ── Open Chess adapter ──────────────────────────────────────────────
+        // Arduino-based smart chessboard with Hall effect sensors + NeoPixels.
+        // Serial/WiFi protocol; protocol-designed only — awaiting firmware extension.
+        .target(
+            name: "OpenChessAdapter",
+            dependencies: [
+                "BoardKit",
+                .product(name: "ChessCore", package: "ChessCore"),
+            ],
+            path: "Sources/OpenChessAdapter"
+        ),
+
         // ── Test support library ──────────────────────────────────────────────
         .target(
             name: "BoardKitTestSupport",
@@ -225,6 +241,7 @@ let package = Package(
                 "MillenniumAdapter",
                 "CertaboAdapter",
                 "ChessUpAdapter",
+                "OpenChessAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
             ],
@@ -248,6 +265,7 @@ let package = Package(
                 "MillenniumAdapter",
                 "CertaboAdapter",
                 "ChessUpAdapter",
+                "OpenChessAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
             ],
@@ -268,6 +286,7 @@ let package = Package(
                 "MillenniumAdapter",
                 "CertaboAdapter",
                 "ChessUpAdapter",
+                "OpenChessAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
             ],
