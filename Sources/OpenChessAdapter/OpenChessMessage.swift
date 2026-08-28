@@ -78,6 +78,9 @@ public enum OpenChessBLE {
     /// Characteristic for LED control (write).
     public static let ledCharUUID: String = "19B10004-E8F2-537E-4F6C-D104768A1214"
     
+    /// Characteristic for game state (read/notify).
+    public static let gameCharUUID: String = "19B10005-E8F2-537E-4F6C-D104768A1214"
+    
     /// Default BLE device name when advertising.
     public static let deviceName: String = "OpenChess"
     
@@ -128,6 +131,10 @@ public enum OpenChessEvent: Equatable, Sendable {
     
     /// Invalid move attempt: `IV:<reason>*`
     case invalidMove(reason: String)
+    
+    /// Game state update: `GS:<state>*`
+    /// state: "IDLE", "ACTIVE", "CHECKMATE", "STALEMATE", etc.
+    case gameState(state: String)
     
     /// Game over: `GO:<result>*`
     /// result: "W" (white wins), "B" (black wins), "D" (draw)
@@ -296,6 +303,10 @@ public enum OpenChessParser {
         case "IV":
             // Invalid move
             return .invalidMove(reason: message.payload)
+            
+        case "GS":
+            // Game state update
+            return .gameState(state: message.payload)
             
         case "GO":
             // Game over

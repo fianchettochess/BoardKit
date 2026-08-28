@@ -139,6 +139,9 @@ public struct OpenChessAdapter: BoardAdapter {
                 return .occupancySnapshot(occupancy)
             case .ready:
                 return .ready
+            case .gameState(let state):
+                // Game state updates are informational; we can emit as raw
+                return .raw(Data("GS:\(state)".utf8))
             case .moveExecuted:
                 // Move confirmation — session can use this for game state tracking
                 return nil // Not mapped to a BoardEvent case
@@ -227,6 +230,9 @@ public extension OpenChessAdapter {
         
         /// Characteristic UUID for LED control.
         static let ledCharUUID = OpenChessBLE.ledCharUUID
+        
+        /// Characteristic UUID for game state.
+        static let gameCharUUID = OpenChessBLE.gameCharUUID
     }
     
     /// Create a command to set LEDs via BLE.
@@ -268,6 +274,21 @@ public extension OpenChessAdapter {
     /// - Returns: Data to write to the command characteristic.
     static func bleStartNewGame() -> Data {
         return Data("NEWGAME".utf8)
+    }
+    
+    /// Create a command to request game state via BLE.
+    ///
+    /// - Returns: Data to write to the command characteristic.
+    static func bleGetGameState() -> Data {
+        return Data("GETGAME".utf8)
+    }
+    
+    /// Create a command to validate a move via BLE.
+    ///
+    /// - Parameter uci: UCI move string (e.g., "e2e4").
+    /// - Returns: Data to write to the command characteristic.
+    static func bleValidateMove(uci: String) -> Data {
+        return Data("VALIDATE:\(uci)".utf8)
     }
 }
 
