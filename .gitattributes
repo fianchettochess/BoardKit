@@ -1,0 +1,23 @@
+# NO LINE-ENDING CONVERSION, AND THIS PACKAGE HAS A CONCRETE REASON.
+#
+# `Captures/*.replay` are UTF-8 TEXT traffic captures, and `CaptureRecorder`
+# documents its output as "the capture as `.replay` text (trailing newline
+# included)" — so newlines are part of the format, not incidental to it. A CRLF
+# checkout would add one byte per line to a 252-line capture and change what the
+# replay transport reads back.
+#
+# MEASURED on FianchettoKit's Windows CI, 2026-09-01 (run 33480101316), before
+# any of these files existed. GitHub's windows-latest runners set
+# `core.autocrlf=true` globally, so `actions/checkout` rewrote every LF to CRLF
+# and eleven of fourteen test failures were that one cause. Each corrupted
+# fixture had grown by exactly its own newline count, and one of them was a
+# BINARY ML fixture that gained a byte and lost its SHA-256.
+#
+# `.gitattributes` overrides `core.autocrlf`, travels with the repository, and
+# applies to every consumer — so a developer cloning on Windows gets the same
+# bytes CI does. Configuring CI alone would have fixed CI alone.
+#
+# `* -text` rather than a per-extension list on purpose: the default has to be
+# "do not touch", because the next byte-sensitive file will be added by someone
+# who has never read this file.
+* -text
