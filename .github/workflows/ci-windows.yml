@@ -43,6 +43,34 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # ChessCore is a PRIVATE repository, so this job cannot resolve the
+      # manifest without a token — measured on the first Windows run
+      # (33500405353): "error: Failed to clone repository
+      # https://github.com/fianchettochess/ChessCore.git". The Linux gate has
+      # carried this step all along; the Windows job was written without it.
+      #
+      # Dependabot-triggered runs read the DEPENDABOT secret scope rather than
+      # the Actions one, so DOCS_PACKAGES_TOKEN must exist in BOTH or every
+      # Dependabot PR fails here. Fail with a usable message rather than letting
+      # swift build die on "could not read Username for https://github.com".
+      - name: Configure private ChessCore access
+        shell: bash
+        env:
+          PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
+        run: |
+          if [[ -z "${PACKAGE_TOKEN}" ]]; then
+            echo "::error::DOCS_PACKAGES_TOKEN is unset. BoardKit cannot resolve" \
+                 "the private ChessCore dependency without it."
+            exit 1
+          fi
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${AUTH_HEADER}"
+          {
+            echo 'GIT_CONFIG_COUNT=1'
+            echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+            echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
+          } >> "${GITHUB_ENV}"
+
       # 6.3.3 is current and is the toolchain the Fianchetto stack's Windows
       # results were measured on. The Linux jobs deliberately pin the package's
       # declared MINIMUM to prove the floor still builds; this job is about
