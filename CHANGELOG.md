@@ -14,6 +14,29 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.10.0] — 2026-09-03
+
+Breaking for consumers, though BoardKit's own API is unchanged: this release
+changes which ChessCore a consumer receives, from 0.10.x to 0.11.x. Under `0.x`
+the minor is the breaking position, so this is 0.10.0 rather than 0.9.1 — a
+consumer resolving BoardKit 0.9.x cannot also resolve ChessCore 0.11.0, and
+finds that out as a resolution failure rather than a compile error.
+
+### Changed
+
+- **ChessCore range moved to `0.11.0 ..< 0.12.0`.** ChessCore 0.11.0 is phase 2
+  of the `PieceColor`/`PieceType` serialization migration: the ENCODER now
+  writes the bare string form (`"white"`, `"knight"`) that `persistenceKey`
+  documents, instead of the keyed form synthesized `Codable` produced
+  (`{"white":{}}`). The decoder has accepted both since 0.10.3 and still does,
+  so blobs written before it still load; only newly-written blobs change shape.
+
+  BoardKit itself neither encodes nor decodes a `PieceColor` or `PieceType`
+  through `Codable` — its codecs are the SquareOff wire format, which carries
+  occupancy bits rather than piece identities — so nothing here changes
+  behaviour. The bump exists because BoardKit's range was the binding
+  constraint stopping its consumers from adopting 0.11.0 at all.
+
 ## [0.8.0] — 2026-08-02
 
 Breaking for consumers, though BoardKit's own API is unchanged: this release

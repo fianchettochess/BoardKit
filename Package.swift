@@ -51,10 +51,10 @@ import PackageDescription
 // `.upToNextMinor` rather than `from:` because ChessCore is pre-1.0 and under
 // 0.x the minor is its breaking position. SwiftPM does not special-case 0.x —
 // `from: "0.9.0"` is shorthand for `.upToNextMajor`, i.e. `0.9.0 ..< 1.0.0`,
-// which would accept a breaking 0.11.0. This range is `0.10.0 ..< 0.11.0`.
+// which would accept a breaking 0.12.0. This range is `0.11.0 ..< 0.12.0`.
 let chessCoreDependency: Package.Dependency = .package(
     url: "https://github.com/fianchettochess/ChessCore.git",
-    .upToNextMinor(from: "0.10.0")
+    .upToNextMinor(from: "0.11.0")
 )
 
 let package = Package(
