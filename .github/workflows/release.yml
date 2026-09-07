@@ -67,22 +67,13 @@ jobs:
       - name: Trust checked-out workspace
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}/BoardKit"
 
-      - name: Configure private ChessCore access
-        env:
-          PACKAGE_TOKEN: ${{ secrets.DOCS_PACKAGES_TOKEN }}
-        run: |
-          if [[ -z "${PACKAGE_TOKEN}" ]]; then
-            echo "DOCS_PACKAGES_TOKEN is required while ChessCore is private" >&2
-            exit 1
-          fi
-          AUTH_HEADER="$(printf 'x-access-token:%s' "${PACKAGE_TOKEN}" | base64 | tr -d '\n')"
-          echo "::add-mask::${AUTH_HEADER}"
-          {
-            echo 'GIT_CONFIG_COUNT=1'
-            echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
-            echo "GIT_CONFIG_VALUE_0=AUTHORIZATION: basic ${AUTH_HEADER}"
-          } >> "${GITHUB_ENV}"
-
+      # ChessCore is PUBLIC as of 2026-09-07, so nothing here needs a token to
+      # resolve it. This step used to inject DOCS_PACKAGES_TOKEN as a git auth
+      # header, and release.yml hard-failed without it — which would now fail a
+      # release for a secret that buys nothing. Removed rather than made
+      # optional: dead credential plumbing is the kind of thing that gets
+      # reinstated by cargo cult when someone sees an auth failure elsewhere.
+      # (ChessCore made public 2026-09-07)
       - name: Verify checkout matches the tag
         id: tag
         working-directory: BoardKit
