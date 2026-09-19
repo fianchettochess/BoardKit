@@ -154,7 +154,10 @@ public struct SquareOffPersonality: BoardPersonality {
     /// `"30#<64 chars>*"` — one '0'/'1' per square in file-major a1…h8 order,
     /// matching `SquareOffParser`'s board-state decode.
     private func boardStateMessage() -> SquareOffMessage {
-        SquareOffMessage(code: "30", body: String(occupancy.map { $0 ? "1" : "0" }))
+        // [Character] stated for the same reason as BoardDiffResolver.sortedOccupancyKey:
+        // under Swift 6.4 the bare literals leave String.init ambiguous.
+        let bits: [Character] = occupancy.map { $0 ? "1" : "0" }
+        return SquareOffMessage(code: "30", body: String(bits))
     }
 
     /// Split a concatenated square list ("e2e4") into ["e2", "e4"].

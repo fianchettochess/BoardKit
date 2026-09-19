@@ -130,7 +130,12 @@ public enum BoardDiffResolver {
 
     /// 64-character "0"/"1" string suitable as a fast equality key.
     private static func sortedOccupancyKey(_ occupancy: [Bool]) -> String {
-        String(occupancy.map { $0 ? "1" : "0" })
+        // The element type is stated rather than left to inference: Swift 6.4 exposes
+        // _RegexParser's String.init(Collection<Unicode.Scalar>) alongside the stdlib's
+        // String.init(Sequence<Character>), so bare "0"/"1" literals make the call
+        // ambiguous. Naming [Character] picks the stdlib overload, as before.
+        let bits: [Character] = occupancy.map { $0 ? "1" : "0" }
+        return String(bits)
     }
 
     private static func positionOccupancyKey(_ position: Position) -> String {
