@@ -193,6 +193,17 @@ public struct ChessnutAdapter: BoardAdapter {
     /// decremented per completed game; while > 0 the adapter re-requests the
     /// next game after each `0x37 01 ED`.
     private var filesRemaining = 0
+    private var expectedFileCount: Int?
+
+    /// Read-only state for import UI and transport routing. Reset framing (or
+    /// use a fresh adapter) before beginning another archive download.
+    public var storedGameImportProgress: ChessnutStoredGameImportProgress {
+        ChessnutStoredGameImportProgress(
+            expectedFileCount: expectedFileCount,
+            completedFileCount: expectedFileCount.map { $0 - filesRemaining } ?? 0,
+            isReceivingFile: fileTransferActive
+        )
+    }
 
     /// Out-of-band wire responses queued while parsing the last `feed(bytes:)`
     /// — the transport drains these via `takePendingResponses()` and writes
@@ -315,6 +326,7 @@ public struct ChessnutAdapter: BoardAdapter {
         fileTransferActive = false
         fileSnapshots.removeAll()
         filesRemaining = 0
+        expectedFileCount = nil
         pendingResponses.removeAll()
     }
 
@@ -475,6 +487,7 @@ public struct ChessnutAdapter: BoardAdapter {
     private mutating func processFileCountReply(_ frame: [UInt8]) -> [BoardEvent] {
         guard frame.count >= 3 else { return [.raw(Data(frame))] }
         filesRemaining = Int(frame[2])
+        expectedFileCount = filesRemaining
         guard filesRemaining > 0 else { return [] }   // no stored games
         // Enter upload mode once (0x21 01 01), then request the first game.
         pendingResponses.append(Data([Opcode.mode, 0x01, 0x01]))
@@ -502,6 +515,9 @@ public struct ChessnutAdapter: BoardAdapter {
             fileSnapshots.removeAll(keepingCapacity: true)
             return []
         case 0xED:
+            // A repeated end flag is not another file. In particular it must
+            // not consume the next catalog entry or request it a second time.
+            guard fileTransferActive else { return [] }
             fileTransferActive = false
             let event = reconstructBufferedGame()
             filesRemaining = max(0, filesRemaining - 1)
