@@ -159,6 +159,16 @@ public struct ChessnutAdapter: BoardAdapter {
     /// Raw byte accumulator. Holds bytes that arrived mid-frame.
     private var buffer: [UInt8] = []
 
+    /// Independent BLE notification streams can split frames at different
+    /// boundaries. Their bytes must never share a framing accumulator.
+    public enum NotificationEndpoint: Hashable, Sendable {
+        case boardState
+        case commandResponse
+        case file
+    }
+
+    private var notificationBuffers: [NotificationEndpoint: [UInt8]] = [:]
+
     /// Last decoded 64-element identity array (file-major, a1=0…h8=63).
     /// `nil` on startup — used to compute lift/place deltas on each new
     /// board-state frame.
@@ -235,16 +245,37 @@ public struct ChessnutAdapter: BoardAdapter {
     /// - `0x37` → file-transfer flags → `raw(data)`
     /// - everything else → `raw(data)` for debug logging
     public mutating func feed(bytes: Data) -> [BoardEvent] {
+        processFrames(Self.extractFrames(bytes: bytes, buffer: &buffer))
+    }
+
+    /// Feed one notification endpoint, retaining its partial frame separately
+    /// while sharing the archive handshake and reconstructed-game state.
+    /// Use this overload consistently for transports with multiple endpoints;
+    /// the legacy overload retains its own single-stream accumulator.
+    public mutating func feed(bytes: Data, from endpoint: NotificationEndpoint) -> [BoardEvent] {
+        var accumulator = notificationBuffers[endpoint] ?? []
+        let frames = Self.extractFrames(bytes: bytes, buffer: &accumulator)
+        notificationBuffers[endpoint] = accumulator
+        return processFrames(frames)
+    }
+
+    private static func extractFrames(bytes: Data, buffer: inout [UInt8]) -> [[UInt8]] {
         buffer.append(contentsOf: bytes)
-        var events: [BoardEvent] = []
+        var frames: [[UInt8]] = []
         while buffer.count >= 2 {
             let payloadLen = Int(buffer[1])
             let frameLen = payloadLen + 2
             guard buffer.count >= frameLen else { break }
             let frame = Array(buffer.prefix(frameLen))
             buffer.removeFirst(frameLen)
-            events += processFrame(frame)
+            frames.append(frame)
         }
+        return frames
+    }
+
+    private mutating func processFrames(_ frames: [[UInt8]]) -> [BoardEvent] {
+        var events: [BoardEvent] = []
+        for frame in frames { events += processFrame(frame) }
         return events
     }
 
@@ -320,6 +351,7 @@ public struct ChessnutAdapter: BoardAdapter {
     ///   signal on the new link without having to recreate the adapter.
     public mutating func resetFraming() {
         buffer = []
+        notificationBuffers.removeAll()
         previousIdentity = nil
         // Abandon any in-flight stored-game download; a dropped link invalidates
         // the handshake and the partial snapshot buffer.
@@ -486,6 +518,9 @@ public struct ChessnutAdapter: BoardAdapter {
     /// [C-REF] `getFileCount` reads the count from byte 2.
     private mutating func processFileCountReply(_ frame: [UInt8]) -> [BoardEvent] {
         guard frame.count >= 3 else { return [.raw(Data(frame))] }
+        // A repeated catalog reply must not restart an active download or
+        // overwrite its completed-file count while the next file is pending.
+        guard filesRemaining == 0 && !fileTransferActive else { return [] }
         filesRemaining = Int(frame[2])
         expectedFileCount = filesRemaining
         guard filesRemaining > 0 else { return [] }   // no stored games

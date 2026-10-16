@@ -76,6 +76,59 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
     }
 }
 
+@Test func notificationEndpointsKeepIndependentPartialFrames() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x01]), from: .commandResponse)
+    _ = adapter.takePendingResponses()
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]), from: .file)
+    let line = ["e4", "e5", "Nf3"]
+    let frames = StoredGameFixture.snapshots(line).map { ChessnutAdapter.encodeFrame(identity: $0) }
+    _ = adapter.feed(bytes: Data(frames[0].prefix(10)), from: .file)
+    // Leave the command stream partial too, then finish the file snapshot
+    // before completing the control reply. Both accumulators must survive.
+    #expect(adapter.feed(bytes: Data([0x2A, 0x02]), from: .commandResponse).isEmpty)
+    #expect(adapter.feed(bytes: Data(frames[0].dropFirst(10)), from: .file).isEmpty)
+    let control = adapter.feed(bytes: Data([77, 0]), from: .commandResponse)
+    #expect(control.contains { if case .battery(percent: 77) = $0 { true } else { false } })
+    for frame in frames.dropFirst() { _ = adapter.feed(bytes: frame, from: .file) }
+    let games = importedGames(adapter.feed(bytes: Data([0x37, 0x01, 0xED]), from: .file))
+    #expect(games.map(\.sans) == [line])
+    #expect(games.first?.complete == true)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func resetClearsEveryEndpointAndLegacyAccumulator() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x2A, 0x02]))
+    _ = adapter.feed(bytes: Data([0x2A, 0x02]), from: .commandResponse)
+    _ = adapter.feed(bytes: Data([0x37, 0x01]), from: .file)
+    _ = adapter.feed(bytes: Data([0x01, 0x22]), from: .boardState)
+    adapter.resetFraming()
+    for endpoint in [ChessnutAdapter.NotificationEndpoint.commandResponse, .file, .boardState] {
+        let events = adapter.feed(bytes: Data([0x2A, 0x02, 61, 0]), from: endpoint)
+        #expect(events.contains { if case .battery(percent: 61) = $0 { true } else { false } })
+    }
+    let legacy = adapter.feed(bytes: Data([0x2A, 0x02, 42, 0]))
+    #expect(legacy.contains { if case .battery(percent: 42) = $0 { true } else { false } })
+}
+
+@Test func duplicateCatalogCannotRestartAnActiveOrBetweenFilesDownload() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x02]), from: .commandResponse)
+    #expect(adapter.takePendingResponses().count == 3)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]), from: .file)
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x09]), from: .commandResponse)
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.isReceivingFile)
+    #expect(adapter.takePendingResponses().isEmpty)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xED]), from: .file)
+    #expect(adapter.takePendingResponses().count == 2)
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x09]), from: .commandResponse)
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 1)
+    #expect(adapter.takePendingResponses().isEmpty)
+}
+
 @Test func importsSingleSeededGame() {
     let sans = ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"]
     var personality = ChessnutPersonality(storedGames: [StoredGameFixture.snapshots(sans)])
