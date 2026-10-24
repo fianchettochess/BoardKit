@@ -44,7 +44,8 @@ private enum StoredGameFixture {
 /// peripheral until it converges, returning every event the adapter emitted.
 private func runStoredGameImport(
     adapter: inout ChessnutAdapter,
-    personality: inout ChessnutPersonality
+    personality: inout ChessnutPersonality,
+    observe: (ChessnutStoredGameImportProgress) -> Void = { _ in }
 ) -> [BoardEvent] {
     var events: [BoardEvent] = []
     var hostWrites: [Data] = [adapter.encode(.requestStoredGames)!]
@@ -57,6 +58,7 @@ private func runStoredGameImport(
             for action in personality.handleHostWrite(write) {
                 guard case .notify(let frame) = action else { continue }
                 events += adapter.feed(bytes: frame.data)
+                observe(adapter.storedGameImportProgress)
                 next += adapter.takePendingResponses()
             }
         }
@@ -72,6 +74,59 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
         }
         return nil
     }
+}
+
+@Test func notificationEndpointsKeepIndependentPartialFrames() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x01]), from: .commandResponse)
+    _ = adapter.takePendingResponses()
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]), from: .file)
+    let line = ["e4", "e5", "Nf3"]
+    let frames = StoredGameFixture.snapshots(line).map { ChessnutAdapter.encodeFrame(identity: $0) }
+    _ = adapter.feed(bytes: Data(frames[0].prefix(10)), from: .file)
+    // Leave the command stream partial too, then finish the file snapshot
+    // before completing the control reply. Both accumulators must survive.
+    #expect(adapter.feed(bytes: Data([0x2A, 0x02]), from: .commandResponse).isEmpty)
+    #expect(adapter.feed(bytes: Data(frames[0].dropFirst(10)), from: .file).isEmpty)
+    let control = adapter.feed(bytes: Data([77, 0]), from: .commandResponse)
+    #expect(control.contains { if case .battery(percent: 77) = $0 { true } else { false } })
+    for frame in frames.dropFirst() { _ = adapter.feed(bytes: frame, from: .file) }
+    let games = importedGames(adapter.feed(bytes: Data([0x37, 0x01, 0xED]), from: .file))
+    #expect(games.map(\.sans) == [line])
+    #expect(games.first?.complete == true)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func resetClearsEveryEndpointAndLegacyAccumulator() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x2A, 0x02]))
+    _ = adapter.feed(bytes: Data([0x2A, 0x02]), from: .commandResponse)
+    _ = adapter.feed(bytes: Data([0x37, 0x01]), from: .file)
+    _ = adapter.feed(bytes: Data([0x01, 0x22]), from: .boardState)
+    adapter.resetFraming()
+    for endpoint in [ChessnutAdapter.NotificationEndpoint.commandResponse, .file, .boardState] {
+        let events = adapter.feed(bytes: Data([0x2A, 0x02, 61, 0]), from: endpoint)
+        #expect(events.contains { if case .battery(percent: 61) = $0 { true } else { false } })
+    }
+    let legacy = adapter.feed(bytes: Data([0x2A, 0x02, 42, 0]))
+    #expect(legacy.contains { if case .battery(percent: 42) = $0 { true } else { false } })
+}
+
+@Test func duplicateCatalogCannotRestartAnActiveOrBetweenFilesDownload() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x02]), from: .commandResponse)
+    #expect(adapter.takePendingResponses().count == 3)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]), from: .file)
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x09]), from: .commandResponse)
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.isReceivingFile)
+    #expect(adapter.takePendingResponses().isEmpty)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xED]), from: .file)
+    #expect(adapter.takePendingResponses().count == 2)
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x09]), from: .commandResponse)
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 1)
+    #expect(adapter.takePendingResponses().isEmpty)
 }
 
 @Test func importsSingleSeededGame() {
@@ -125,4 +180,80 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
 
 @Test func adapterAdvertisesGameArchiveCapability() {
     #expect(ChessnutAdapter().capabilities.contains(.gameArchive))
+}
+
+@Test func progressTracksCatalogAndEachRealFileBoundary() {
+    var adapter = ChessnutAdapter()
+    #expect(adapter.storedGameImportProgress.expectedFileCount == nil)
+    #expect(!adapter.storedGameImportProgress.isFinished)
+    var personality = ChessnutPersonality(storedGames: [
+        StoredGameFixture.snapshots(["e4", "e5"]),
+        StoredGameFixture.snapshots(["d4", "d5", "c4"]),
+    ])
+    var progress: [ChessnutStoredGameImportProgress] = []
+    let events = runStoredGameImport(adapter: &adapter, personality: &personality) { progress.append($0) }
+    #expect(importedGames(events).map(\.sans) == [["e4", "e5"], ["d4", "d5", "c4"]])
+    #expect(progress.contains { $0.expectedFileCount == 2 && $0.completedFileCount == 0 && !$0.isReceivingFile })
+    #expect(progress.contains { $0.completedFileCount == 0 && $0.isReceivingFile })
+    #expect(progress.contains { $0.completedFileCount == 1 && $0.isReceivingFile })
+    #expect(progress.filter(\.isFinished).allSatisfy { $0.completedFileCount == 2 })
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func emptyCatalogFinishesWithoutAReconstructedGame() {
+    var adapter = ChessnutAdapter()
+    var personality = ChessnutPersonality(storedGames: [])
+    #expect(runStoredGameImport(adapter: &adapter, personality: &personality).isEmpty)
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 0)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 0)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func unreadableAndEmptyFilesStillCountTowardCompletion() {
+    var adapter = ChessnutAdapter()
+    var personality = ChessnutPersonality(storedGames: [
+        [],
+        [StoredGameFixture.snapshots(["e4"]).last!],
+        StoredGameFixture.snapshots([]),
+    ])
+    let games = importedGames(runStoredGameImport(adapter: &adapter, personality: &personality))
+    #expect(games.allSatisfy { $0.sans.isEmpty })
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 3)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 3)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func repeatedEndCannotAdvanceTheCatalogOrRequestAnotherFile() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x02]))
+    #expect(adapter.takePendingResponses().count == 3)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE, 0x37, 0x01, 0xED]))
+    #expect(adapter.storedGameImportProgress.completedFileCount == 1)
+    #expect(adapter.takePendingResponses().count == 2)
+    #expect(adapter.feed(bytes: Data([0x37, 0x01, 0xED])).isEmpty)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 1)
+    #expect(!adapter.storedGameImportProgress.isFinished)
+    #expect(adapter.takePendingResponses().isEmpty)
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE, 0x37, 0x01, 0xED]))
+    #expect(adapter.storedGameImportProgress.completedFileCount == 2)
+    #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func framingResetClearsPartialDownloadAndProgressBeforeReconnect() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x03, 0x37, 0x01, 0xBE, 0x01, 0x22]))
+    #expect(adapter.storedGameImportProgress.isReceivingFile)
+    adapter.resetFraming()
+    #expect(adapter.storedGameImportProgress.expectedFileCount == nil)
+    #expect(adapter.storedGameImportProgress.completedFileCount == 0)
+    #expect(!adapter.storedGameImportProgress.isReceivingFile)
+    #expect(!adapter.storedGameImportProgress.isFinished)
+    #expect(adapter.takePendingResponses().isEmpty)
+    var personality = ChessnutPersonality(storedGames: [StoredGameFixture.snapshots(["Nf3", "d5"])])
+    let games = importedGames(runStoredGameImport(adapter: &adapter, personality: &personality))
+    #expect(games.map(\.sans) == [["Nf3", "d5"]])
+    #expect(adapter.storedGameImportProgress.expectedFileCount == 1)
+    #expect(adapter.storedGameImportProgress.isFinished)
 }
