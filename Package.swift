@@ -100,6 +100,11 @@ let package = Package(
         // Protocol-pinned against mono424/chessupdriver; ChessUp 2
         // hardware-verified (full 90-ply game, Android + iOS, 2026-07).
         .library(name: "ChessUpAdapter", targets: ["ChessUpAdapter"]),
+        // Open Chess (Concept Bytes) adapter: newline-delimited JSON over BLE
+        // or USB serial, occupancy sensing, RGBW per-square LEDs, battery.
+        // Built from the published protocol and the public web controller;
+        // hardware-unverified.
+        .library(name: "OpenChessAdapter", targets: ["OpenChessAdapter"]),
         // Test support: ReplayTransport + SimulatedBoard. Listed as a product
         // so test-only app targets can depend on it. Not part of the production
         // graph.
@@ -204,6 +209,16 @@ let package = Package(
             path: "Sources/ChessUpAdapter"
         ),
 
+        // ── Open Chess adapter ────────────────────────────────────────────────
+        // Line codec (OpenChessMessage/OpenChessCodec) + adapter + GATT and
+        // serial constants. Hardware-unverified; see the header of
+        // OpenChessAdapter.swift for the open questions.
+        .target(
+            name: "OpenChessAdapter",
+            dependencies: ["BoardKit"],
+            path: "Sources/OpenChessAdapter"
+        ),
+
         // ── Test support library ──────────────────────────────────────────────
         .target(
             name: "BoardKitTestSupport",
@@ -225,6 +240,7 @@ let package = Package(
                 "MillenniumAdapter",
                 "CertaboAdapter",
                 "ChessUpAdapter",
+                "OpenChessAdapter",
                 "BoardKitTestSupport",
                 .product(name: "ChessCore", package: "ChessCore"),
             ],

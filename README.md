@@ -42,6 +42,7 @@ graph.
 | `MillenniumAdapter` | Millennium BLE and USB-HID adapter |
 | `CertaboAdapter` | Certabo RFID adapter (USB serial, BT Classic, BLE) |
 | `ChessUpAdapter` | ChessUp BLE adapter |
+| `OpenChessAdapter` | Open Chess (Concept Bytes) adapter: JSON lines over BLE or USB serial |
 | `BoardKitTestSupport` | `ReplayTransport` and `SimulatedBoard` test harness |
 | `boardkit-emulator` | macOS CLI BLE peripheral that emulates a supported board (Square Off, Chessnut, Pegasus, Millennium, Certabo, ChessUp) so the apps on a real phone can connect to it as if it were hardware |
 
@@ -108,6 +109,7 @@ fixtures, but they have not been exercised on the named target hardware.
 | Certabo Spectrum RGB | A pinned MIT implementation and locally constructed protocol regressions. | No physical-board or USB/Bluetooth capture-log validation; identity requires calibration, and the 9×9 corner grid does not provide per-square LEDs. | ✓ | ✓ after calibration | | ✓ | | | | |
 | Tabutronic Sentio | A pinned MIT implementation and locally constructed protocol regressions. | No physical-board or USB/Bluetooth capture-log validation. | ✓ | | ✓ | ✓ | | | | |
 | ChessUp (gen-1) | Pinned protocol references; its shared GATT transport and exercised frame formats were corroborated indirectly on ChessUp 2. | No ChessUp gen-1 unit has been tested. | ✓ | | | ✓ | | | | |
+| Open Chess | The board protocol published at openchess.shop/how-it-works and the public web controller's observable behaviour (BLE UUIDs, framing, occupancy bit order). | No physical board yet. Unverified: occupancy streaming under every installed game, `identify` refreshing occupancy, `hint` replace semantics, and the occupancy bit order on hardware. | ✓ | | ✓ | ✓ | | ✓ | | |
 
 A capture-log contribution is the fastest way to expand a verified scope or
 move an adapter into the hardware-tested group; see the contribution flow below.
@@ -174,6 +176,18 @@ move an adapter into the hardware-tested group; see the contribution flow below.
   profile, and every opcode exercised so far matches the pinned gen-1 protocol
   references. The gen-1
   unit itself remains untested.
+
+- **Open Chess:** Concept Bytes' ESP32-S3 board (openchess.shop): 64 hall
+  sensors (occupancy only) and 64 RGBW per-square LEDs. One protocol over USB
+  serial (115200 8N1) and BLE: newline-delimited JSON objects typed by a `t`
+  field. Built from the published protocol section and the public web
+  controller's behaviour; the ESP32-S3 firmware is not public, and the older
+  open-source firmware does not match it. The occupancy hex is rank-major on
+  the wire (a1 = bit 0, b1 = bit 1) and is transposed to BoardKit's file-major
+  order. The board runs its own installable games, whose `move` and `state`
+  reports pass through as `.raw`; sessions infer moves from occupancy. BoardKit
+  transports do not chunk writes, so a platform BLE writer must split commands
+  at `OpenChessGATT.maximumWriteLength` (180 bytes).
 
 - **ChessUp 2:** Hardware-verified on July 7, 2026, with a physical ChessUp 2
   (Bryght Labs, LightBlue BLE session). NUS transport was
