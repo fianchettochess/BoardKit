@@ -158,22 +158,31 @@ func chessnutEncodeBoard(identity: [Piece?]) -> [UInt8] {
 ///
 /// - Parameter prev: Identity snapshot from the previous board frame.
 /// - Parameter curr: Identity snapshot from the current board frame.
-/// - Returns: One `.squareSensed` event per changed square, in file-major
-///   iteration order (a-file first, rank 1 first within each file).
+/// - Returns: The frame's lifts, then its places, each in file-major order
+///   (a-file first, rank 1 first within each file). A square where one piece
+///   replaced another contributes one of each.
 func chessnutDeltaEvents(prev: [Piece?], curr: [Piece?]) -> [BoardEvent] {
-    var events: [BoardEvent] = []
+    // Every lift in the frame before any place, as a hand moves pieces: a
+    // capture that lands inside one frame reads lift, lift, place instead of
+    // the mover arriving before it left. (Fianchetto-0yp)
+    var lifts: [BoardEvent] = []
+    var places: [BoardEvent] = []
     let files = Array("abcdefgh")
     for file in 0..<8 {
         for rank in 0..<8 {
             let idx = file * 8 + rank   // file-major: a1=0…h8=63
-            if prev[idx] == nil, let placed = curr[idx] {
-                // Empty → occupied: place event.
-                events.append(.squareSensed(square: "\(files[file])\(rank + 1)", isLift: false, piece: placed))
-            } else if let lifted = prev[idx], curr[idx] == nil {
-                // Occupied → empty: lift event; carry the previous piece.
-                events.append(.squareSensed(square: "\(files[file])\(rank + 1)", isLift: true, piece: lifted))
+            guard prev[idx] != curr[idx] else { continue }
+            let square = "\(files[file])\(rank + 1)"
+            // An occupied square whose piece changed is both: a capture fast
+            // enough that the board never reported the square empty
+            // (Kxa1 on a Chessnut Go, 2026-10-29).
+            if let lifted = prev[idx] {
+                lifts.append(.squareSensed(square: square, isLift: true, piece: lifted))
+            }
+            if let placed = curr[idx] {
+                places.append(.squareSensed(square: square, isLift: false, piece: placed))
             }
         }
     }
-    return events
+    return lifts + places
 }

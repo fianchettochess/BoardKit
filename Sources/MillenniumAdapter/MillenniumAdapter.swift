@@ -201,19 +201,29 @@ func millenniumLEDFrame(squares: [String], frameSlotTime: UInt8 = 0x0F,
 /// Compute squareSensed lift/place deltas between two consecutive identity snapshots.
 /// Both arrays are file-major (a1=0 … h8=63).
 func millenniumDeltaEvents(prev: [Piece?], curr: [Piece?]) -> [BoardEvent] {
-    var events: [BoardEvent] = []
+    // Every lift in the frame before any place, as a hand moves pieces: a
+    // capture that lands inside one frame reads lift, lift, place instead of
+    // the mover arriving before it left. (Fianchetto-0yp)
+    var lifts: [BoardEvent] = []
+    var places: [BoardEvent] = []
     let files = Array("abcdefgh")
     for file in 0..<8 {
         for rank in 0..<8 {
             let idx = file * 8 + rank
-            if prev[idx] == nil, let placed = curr[idx] {
-                events.append(.squareSensed(square: "\(files[file])\(rank + 1)", isLift: false, piece: placed))
-            } else if let lifted = prev[idx], curr[idx] == nil {
-                events.append(.squareSensed(square: "\(files[file])\(rank + 1)", isLift: true, piece: lifted))
+            guard prev[idx] != curr[idx] else { continue }
+            let square = "\(files[file])\(rank + 1)"
+            // An occupied square whose piece changed is both: a capture fast
+            // enough that the board never reported the square empty
+            // (Kxa1 on a Chessnut Go, 2026-10-29).
+            if let lifted = prev[idx] {
+                lifts.append(.squareSensed(square: square, isLift: true, piece: lifted))
+            }
+            if let placed = curr[idx] {
+                places.append(.squareSensed(square: square, isLift: false, piece: placed))
             }
         }
     }
-    return events
+    return lifts + places
 }
 
 // MARK: - Frame length table (internal)
