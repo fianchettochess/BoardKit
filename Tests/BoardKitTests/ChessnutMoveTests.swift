@@ -797,8 +797,9 @@ private let f4LEDBytes = Data([
     }
 
     // Play 3.Nxe5 (capture — destination had black pawn, now white knight).
-    // Frame delta: f3 → nil (lift); e5 stays occupied (black→white) → no place delta.
-    // Verified via the resulting identitySnapshot.
+    // One frame: e5 changes piece without reading empty, so it is both a lift
+    // (the pawn) and a place (the knight), and every lift comes before any
+    // place. (Fianchetto-0yp)
     _ = try await sim.executeMove(uci: "f3e5")
     let capturePos    = await sim.position
     let captureEvents = adapter.feed(bytes: encodePositionAsMove(capturePos))
@@ -807,9 +808,11 @@ private let f4LEDBytes = Data([
             "Capture: expected identitySnapshot")
 
     let captureDeltas = deltas(from: captureEvents)
-    let captureLift   = captureDeltas.first { $0.isLift }
-    #expect(captureLift?.square == "f3", "Nxe5 capture: lift from f3")
-    #expect(captureLift?.piece  == Piece(type: .knight, color: .white))
+    #expect(captureDeltas.map(\.square) == ["e5", "f3", "e5"])
+    #expect(captureDeltas.map(\.isLift) == [true, true, false])
+    #expect(captureDeltas.map(\.piece) == [Piece(type: .pawn, color: .black),
+                                           Piece(type: .knight, color: .white),
+                                           Piece(type: .knight, color: .white)])
 
     // Verify via identitySnapshot that e5 now holds the white knight.
     guard let capId = firstIdentitySnapshot(from: captureEvents) else {
