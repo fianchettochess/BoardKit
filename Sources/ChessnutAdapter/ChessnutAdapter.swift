@@ -199,6 +199,10 @@ public struct ChessnutAdapter: BoardAdapter {
     /// Board-identity snapshots accumulated for the game currently streaming.
     private var fileSnapshots: [[Piece?]] = []
 
+    /// Most snapshots one stored game may buffer. A game is one `0x01` frame
+    /// per ply; a board that never sends `ED` must not grow the buffer forever.
+    public static let maxFileSnapshots = 2048
+
     /// Stored games not yet requested. Set from the `0x32` count reply and
     /// decremented per completed game; while > 0 the adapter re-requests the
     /// next game after each `0x37 01 ED`.
@@ -213,6 +217,27 @@ public struct ChessnutAdapter: BoardAdapter {
             completedFileCount: expectedFileCount.map { $0 - filesRemaining } ?? 0,
             isReceivingFile: fileTransferActive
         )
+    }
+
+    /// Abandon an in-flight or half-finished stored-game download and return
+    /// the board to realtime mode, so live `0x01` frames stop being buffered
+    /// as archive snapshots. Transport/face contract: call this when the user
+    /// cancels the import or the transport's own timeout fires (the adapter
+    /// has no clock). Drain `takePendingResponses()` afterwards and write the
+    /// result to the board. A no-op when no import has started; idempotent.
+    public mutating func cancelStoredGameImport() {
+        guard fileTransferActive || expectedFileCount != nil else { return }
+        abortStoredGameImport()
+    }
+
+    private mutating func abortStoredGameImport() {
+        fileTransferActive = false
+        fileSnapshots.removeAll()
+        filesRemaining = 0
+        expectedFileCount = nil
+        // Drop any queued next-game request; only the mode switch survives.
+        pendingResponses.removeAll()
+        queueRealtimeMode()
     }
 
     /// Out-of-band wire responses queued while parsing the last `feed(bytes:)`
@@ -418,6 +443,12 @@ public struct ChessnutAdapter: BoardAdapter {
             // During a stored-game download, 0x01 frames are archived snapshots,
             // not live board state. Buffer them; do not emit realtime events.
             if fileTransferActive {
+                guard fileSnapshots.count < Self.maxFileSnapshots else {
+                    // Runaway transfer: end it rather than buffer without bound.
+                    // Surface an unreadable game so the caller is not left waiting.
+                    abortStoredGameImport()
+                    return [.storedGameImported(moves: [], sanMoves: [], isComplete: false)]
+                }
                 accumulateFileSnapshot(frame)
                 return []
             }

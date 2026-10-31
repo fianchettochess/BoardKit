@@ -292,3 +292,44 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
     _ = adapter.feed(bytes: Data([0x32, 0x01, 0x00]))
     #expect(adapter.takePendingResponses() == [Data([0x21, 0x01, 0x00])])
 }
+
+private func startTransfer(_ adapter: inout ChessnutAdapter) {
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x01]))
+    _ = adapter.takePendingResponses()
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE]))
+}
+
+@Test func cancelledImportStopsSwallowingLiveFramesAndRestoresRealtime() {
+    var adapter = ChessnutAdapter()
+    startTransfer(&adapter)
+    let frame = ChessnutAdapter.encodeFrame(identity: StoredGameFixture.snapshots([])[0])
+    #expect(adapter.feed(bytes: frame).isEmpty)
+
+    adapter.cancelStoredGameImport()
+
+    #expect(adapter.takePendingResponses() == [Data([0x21, 0x01, 0x00])])
+    #expect(!adapter.storedGameImportProgress.isReceivingFile)
+    let live = adapter.feed(bytes: frame)
+    #expect(live.contains { if case .ready = $0 { true } else { false } })
+    // A late ED from the abandoned transfer is not another file.
+    #expect(adapter.feed(bytes: Data([0x37, 0x01, 0xED])).isEmpty)
+    #expect(adapter.takePendingResponses().isEmpty)
+}
+
+@Test func cancelWithoutAnImportQueuesNothing() {
+    var adapter = ChessnutAdapter()
+    adapter.cancelStoredGameImport()
+    #expect(adapter.takePendingResponses().isEmpty)
+}
+
+@Test func runawayTransferEndsAtTheSnapshotCap() {
+    var adapter = ChessnutAdapter()
+    startTransfer(&adapter)
+    let frame = ChessnutAdapter.encodeFrame(identity: StoredGameFixture.snapshots([])[0])
+    var events: [BoardEvent] = []
+    for _ in 0...ChessnutAdapter.maxFileSnapshots { events += adapter.feed(bytes: frame) }
+    #expect(importedGames(events).count == 1)
+    #expect(importedGames(events).first?.complete == false)
+    #expect(!adapter.storedGameImportProgress.isReceivingFile)
+    #expect(adapter.takePendingResponses() == [Data([0x21, 0x01, 0x00])])
+}
