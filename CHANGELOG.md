@@ -14,6 +14,35 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.13.0] — 2026-10-31
+
+Breaking for consumers because the ChessCore range moves to `0.12.0 ..< 0.13.0`.
+BoardKit's own API changes are additive.
+
+### Added
+
+- `BoardAdapter.cancelStoredGameImport()`, a no-op by default, implemented by
+  Chessnut, plus `ChessnutAdapter.maxFileSnapshots` and `abandonedFileCount`.
+- `MillenniumAdapter(isRotated:)`, so a reconnect keeps the board's orientation.
+- `BoardPersonality.coalescedFrames(for:)` for the emulator.
+
+### Changed
+
+- Malformed Square Off frames (bad square, suffix or occupancy) parse as `.raw`.
+- Chessnut's first frame with an invalid nibble emits `.raw` only, and `.ready`
+  waits for a valid one. A board that always sends one never becomes ready.
+- `takePendingResponses` ends a stored-game listing with the upload-mode exit,
+  and a switch back to realtime requests a fresh listing.
+
+### Fixed
+
+- A runaway Chessnut transfer keeps its partial game, marks it incomplete and
+  finishes progress, and one corrupt archived frame no longer ends the game.
+- A late `BE` or archive frame after a cancel no longer reads as live board state
+  on the file endpoint.
+- Certabo squares with an unknown tag report as occupied, so they no longer read
+  as vacated on every frame.
+
 ## [0.10.0] — 2026-09-03
 
 Breaking for consumers, though BoardKit's own API is unchanged: this release

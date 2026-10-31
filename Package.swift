@@ -54,7 +54,7 @@ import PackageDescription
 // which would accept a breaking 0.12.0. This range is `0.11.0 ..< 0.12.0`.
 let chessCoreDependency: Package.Dependency = .package(
     url: "https://github.com/fianchettochess/ChessCore.git",
-    .upToNextMinor(from: "0.11.0")
+    .upToNextMinor(from: "0.12.0")
 )
 
 let package = Package(
