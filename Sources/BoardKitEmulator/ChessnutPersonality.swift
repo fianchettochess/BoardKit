@@ -164,6 +164,17 @@ public struct ChessnutPersonality: BoardPersonality {
         }
     }
 
+    public mutating func coalescedFrames(for events: [BoardEvent]) -> [PersonalityFrame] {
+        var last: PersonalityFrame?
+        var others: [PersonalityFrame] = []
+        for event in events {
+            for frame in frames(for: event) {
+                if frame.characteristicUUID == ChessnutGATT.boardStateChar { last = frame } else { others.append(frame) }
+            }
+        }
+        return others + (last.map { [$0] } ?? [])
+    }
+
     public mutating func handleHostWrite(_ data: Data) -> [PeripheralAction] {
         buffer.append(contentsOf: data)
         var actions: [PeripheralAction] = []

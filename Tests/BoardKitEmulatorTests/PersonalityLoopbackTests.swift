@@ -655,3 +655,44 @@ func makeTestCalibration() -> CertaboCalibration {
                 "occupancy mirror drifted after \(corpusCase.uci) with \(perturbation.appliedPatterns)")
     }
 }
+
+// MARK: - Whole capture inside one frame
+
+/// A capture fast enough that the attacker lands on the captured piece's
+/// square between two scans reaches the host as one frame in which the
+/// destination changed colour. The host must still see both lifts before the
+/// attacker's place, or the session waits forever on a piece it never saw
+/// land. (Fianchetto-0yp: ...Kxa1 on a Chessnut Go.)
+@Test(arguments: [true, false])
+func coalescedCaptureFrameStillReadsLiftsThenPlace(chessnut: Bool) async throws {
+    let sim = SimulatedBoard(capabilities: [.occupancySensing, .pieceIdentity])
+    _ = try await sim.executeMove(uci: "e2e4")
+    _ = try await sim.executeMove(uci: "d7d5")
+    let before = await sim.boardSnapshot()
+    let capture = try await sim.executeMove(uci: "e4d5")
+
+    var decoded: [(square: String, isLift: Bool, piece: Piece?)] = []
+    func run<P: BoardPersonality, A: BoardAdapter>(_ personality: inout P, _ adapter: inout A) {
+        var prime = Data()
+        for frame in personality.frames(for: before) { prime.append(frame.data) }
+        _ = adapter.feed(bytes: prime)
+        let frames = personality.coalescedFrames(for: capture)
+        #expect(frames.count == 1)
+        for frame in frames { decoded += sensedTuples(adapter.feed(bytes: frame.data)) }
+    }
+    if chessnut {
+        var p = ChessnutPersonality(); var a = ChessnutAdapter(); run(&p, &a)
+    } else {
+        var p = MillenniumPersonality(); var a = MillenniumAdapter(); run(&p, &a)
+    }
+
+    let whitePawn = Piece(type: .pawn, color: .white)
+    let blackPawn = Piece(type: .pawn, color: .black)
+    #expect(Set(decoded.prefix(2).map(\.square)) == ["e4", "d5"])
+    #expect(decoded.prefix(2).allSatisfy { $0.isLift })
+    #expect(decoded.first { $0.square == "d5" && $0.isLift }?.piece == blackPawn)
+    #expect(decoded.count == 3)
+    #expect(decoded.last?.square == "d5")
+    #expect(decoded.last?.isLift == false)
+    #expect(decoded.last?.piece == whitePawn)
+}

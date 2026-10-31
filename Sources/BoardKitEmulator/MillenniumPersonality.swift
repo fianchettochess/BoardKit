@@ -84,6 +84,12 @@ public struct MillenniumPersonality: BoardPersonality {
         }
     }
 
+    public mutating func coalescedFrames(for events: [BoardEvent]) -> [PersonalityFrame] {
+        var last: PersonalityFrame?
+        for event in events { last = frames(for: event).last ?? last }
+        return last.map { [$0] } ?? []
+    }
+
     public mutating func handleHostWrite(_ data: Data) -> [PeripheralAction] {
         // Strip parity (& 0x7F) on every incoming byte, as the host adapter does.
         for byte in data { rawBuffer.append(byte & 0x7F) }

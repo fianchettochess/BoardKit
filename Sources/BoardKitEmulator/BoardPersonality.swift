@@ -163,8 +163,24 @@ public protocol BoardPersonality: Sendable {
     /// full 36-byte board frame per occupancy change).
     mutating func frames(for event: BoardEvent) -> [PersonalityFrame]
 
+    /// Encode several events that happen between two sensor scans, the way a
+    /// board whose scan outpaces the radio reports a fast capture: the
+    /// mirror advances through every event but only the final board state
+    /// goes on the wire. Full-state personalities (Chessnut, Millennium)
+    /// emit one frame; per-event protocols have nothing to coalesce and use
+    /// the default, which is the same frames as feeding the events singly.
+    mutating func coalescedFrames(for events: [BoardEvent]) -> [PersonalityFrame]
+
     /// Parse one host write (possibly a fragment) and return the actions it
     /// triggers. Accumulates fragments across calls exactly like
     /// `BoardAdapter.feed(bytes:)` does on the host side.
     mutating func handleHostWrite(_ data: Data) -> [PeripheralAction]
+}
+
+extension BoardPersonality {
+    public mutating func coalescedFrames(for events: [BoardEvent]) -> [PersonalityFrame] {
+        var frames: [PersonalityFrame] = []
+        for event in events { frames += self.frames(for: event) }
+        return frames
+    }
 }
