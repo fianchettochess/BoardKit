@@ -208,14 +208,25 @@ public struct ChessnutAdapter: BoardAdapter {
     /// next game after each `0x37 01 ED`.
     private var filesRemaining = 0
     private var expectedFileCount: Int?
+    private var abandonedFileCount = 0
+
+    /// Frames of the current game whose board could not be read. They are not
+    /// buffered, but they count towards the cap and mark the game incomplete.
+    private var unreadableFileSnapshots = 0
+
+    /// Set when an import ends early and cleared by the next catalog reply. The
+    /// board may answer a request already on the wire with a `BE` that must not
+    /// reopen the transfer.
+    private var ignoresFileFlags = false
 
     /// Read-only state for import UI and transport routing. Reset framing (or
     /// use a fresh adapter) before beginning another archive download.
     public var storedGameImportProgress: ChessnutStoredGameImportProgress {
         ChessnutStoredGameImportProgress(
             expectedFileCount: expectedFileCount,
-            completedFileCount: expectedFileCount.map { $0 - filesRemaining } ?? 0,
-            isReceivingFile: fileTransferActive
+            completedFileCount: expectedFileCount.map { $0 - filesRemaining - abandonedFileCount } ?? 0,
+            isReceivingFile: fileTransferActive,
+            abandonedFileCount: abandonedFileCount
         )
     }
 
@@ -224,20 +235,42 @@ public struct ChessnutAdapter: BoardAdapter {
     /// as archive snapshots. Transport/face contract: call this when the user
     /// cancels the import or the transport's own timeout fires (the adapter
     /// has no clock). Drain `takePendingResponses()` afterwards and write the
-    /// result to the board. A no-op when no import has started; idempotent.
+    /// result to the board. A no-op unless a download is under way, so a finished
+    /// import keeps its progress; idempotent.
+    ///
+    /// Two windows the adapter cannot close, because it has no clock and
+    /// `encode` does not record requests: a count reply that arrives after a
+    /// cancel starts a new download, and on the single-stream `feed(bytes:)` an
+    /// archived `0x01` still in flight reads as live board state. Feed by
+    /// endpoint to close the second.
     public mutating func cancelStoredGameImport() {
-        guard fileTransferActive || expectedFileCount != nil else { return }
-        abortStoredGameImport()
+        guard fileTransferActive || filesRemaining > 0 else { return }
+        endTransferEarly()
+        expectedFileCount = nil
+        filesRemaining = 0
+        abandonedFileCount = 0
     }
 
-    private mutating func abortStoredGameImport() {
+    /// Stop the transfer and return the board to realtime mode. Drops any queued
+    /// next-game request; only the mode switch survives.
+    private mutating func endTransferEarly() {
         fileTransferActive = false
         fileSnapshots.removeAll()
-        filesRemaining = 0
-        expectedFileCount = nil
-        // Drop any queued next-game request; only the mode switch survives.
+        unreadableFileSnapshots = 0
+        ignoresFileFlags = true
         pendingResponses.removeAll()
         queueRealtimeMode()
+    }
+
+    /// The board sent more frames than one game can hold without an `ED`. Keep
+    /// what was read, count this file as done, and give up on the rest.
+    private mutating func abandonRunawayTransfer() -> [BoardEvent] {
+        let event = reconstructBufferedGame(forceIncomplete: true)
+        filesRemaining = max(0, filesRemaining - 1)
+        abandonedFileCount = filesRemaining
+        filesRemaining = 0
+        endTransferEarly()
+        return event.map { [$0] } ?? []
     }
 
     /// Out-of-band wire responses queued while parsing the last `feed(bytes:)`
@@ -270,7 +303,7 @@ public struct ChessnutAdapter: BoardAdapter {
     /// - `0x37` → file-transfer flags → `raw(data)`
     /// - everything else → `raw(data)` for debug logging
     public mutating func feed(bytes: Data) -> [BoardEvent] {
-        processFrames(Self.extractFrames(bytes: bytes, buffer: &buffer))
+        processFrames(Self.extractFrames(bytes: bytes, buffer: &buffer), from: nil)
     }
 
     /// Feed one notification endpoint, retaining its partial frame separately
@@ -281,7 +314,7 @@ public struct ChessnutAdapter: BoardAdapter {
         var accumulator = notificationBuffers[endpoint] ?? []
         let frames = Self.extractFrames(bytes: bytes, buffer: &accumulator)
         notificationBuffers[endpoint] = accumulator
-        return processFrames(frames)
+        return processFrames(frames, from: endpoint)
     }
 
     private static func extractFrames(bytes: Data, buffer: inout [UInt8]) -> [[UInt8]] {
@@ -298,9 +331,9 @@ public struct ChessnutAdapter: BoardAdapter {
         return frames
     }
 
-    private mutating func processFrames(_ frames: [[UInt8]]) -> [BoardEvent] {
+    private mutating func processFrames(_ frames: [[UInt8]], from endpoint: NotificationEndpoint?) -> [BoardEvent] {
         var events: [BoardEvent] = []
-        for frame in frames { events += processFrame(frame) }
+        for frame in frames { events += processFrame(frame, from: endpoint) }
         return events
     }
 
@@ -382,8 +415,11 @@ public struct ChessnutAdapter: BoardAdapter {
         // the handshake and the partial snapshot buffer.
         fileTransferActive = false
         fileSnapshots.removeAll()
+        unreadableFileSnapshots = 0
         filesRemaining = 0
         expectedFileCount = nil
+        abandonedFileCount = 0
+        ignoresFileFlags = false
         pendingResponses.removeAll()
     }
 
@@ -436,22 +472,23 @@ public struct ChessnutAdapter: BoardAdapter {
 
     // MARK: - Frame processing
 
-    private mutating func processFrame(_ frame: [UInt8]) -> [BoardEvent] {
+    private mutating func processFrame(_ frame: [UInt8], from endpoint: NotificationEndpoint?) -> [BoardEvent] {
         guard !frame.isEmpty else { return [] }
         switch frame[0] {
         case Opcode.boardState:
             // During a stored-game download, 0x01 frames are archived snapshots,
             // not live board state. Buffer them; do not emit realtime events.
             if fileTransferActive {
-                guard fileSnapshots.count < Self.maxFileSnapshots else {
+                guard fileSnapshots.count + unreadableFileSnapshots < Self.maxFileSnapshots else {
                     // Runaway transfer: end it rather than buffer without bound.
-                    // Surface an unreadable game so the caller is not left waiting.
-                    abortStoredGameImport()
-                    return [.storedGameImported(moves: [], sanMoves: [], isComplete: false)]
+                    return abandonRunawayTransfer()
                 }
                 accumulateFileSnapshot(frame)
                 return []
             }
+            // The file endpoint carries only archive frames, so the tail of an
+            // ended transfer is never live board state.
+            if endpoint == .file { return [] }
             return processBoardStateFrame(frame)
         case Opcode.batteryReply:
             return processBatteryFrame(frame)
@@ -551,6 +588,8 @@ public struct ChessnutAdapter: BoardAdapter {
         // A repeated catalog reply must not restart an active download or
         // overwrite its completed-file count while the next file is pending.
         guard filesRemaining == 0 && !fileTransferActive else { return [] }
+        ignoresFileFlags = false
+        abandonedFileCount = 0
         filesRemaining = Int(frame[2])
         expectedFileCount = filesRemaining
         guard filesRemaining > 0 else {                // no stored games
@@ -587,8 +626,10 @@ public struct ChessnutAdapter: BoardAdapter {
         guard frame.count >= 3 else { return [.raw(Data(frame))] }
         switch frame[2] {
         case 0xBE:
+            guard !ignoresFileFlags else { return [] }
             fileTransferActive = true
             fileSnapshots.removeAll(keepingCapacity: true)
+            unreadableFileSnapshots = 0
             return []
         case 0xED:
             // A repeated end flag is not another file. In particular it must
@@ -599,6 +640,7 @@ public struct ChessnutAdapter: BoardAdapter {
             filesRemaining = max(0, filesRemaining - 1)
             if filesRemaining > 0 { queueNextGameRequest() } else { queueRealtimeMode() }
             fileSnapshots.removeAll(keepingCapacity: true)
+            unreadableFileSnapshots = 0
             return event.map { [$0] } ?? []
         default:
             return [.raw(Data(frame))]
@@ -608,20 +650,31 @@ public struct ChessnutAdapter: BoardAdapter {
     /// Decode one `0x01` snapshot frame into the file buffer during transfer.
     private mutating func accumulateFileSnapshot(_ frame: [UInt8]) {
         guard frame.count >= 34 else { return }
-        let (identity, _) = chessnutDecodeBoard(from: frame, start: 2)
-        fileSnapshots.append(identity)
+        // An unreadable nibble decodes to an empty square. No legal move reaches
+        // that board, so buffering it would end the reconstruction there.
+        let (identity, hasInvalidNibble) = chessnutDecodeBoard(from: frame, start: 2)
+        if hasInvalidNibble {
+            unreadableFileSnapshots += 1
+        } else {
+            fileSnapshots.append(identity)
+        }
     }
 
     /// Reconstruct the buffered snapshots into a `.storedGameImported` event, or
-    /// `nil` for an empty buffer (firmware quirk — nothing to import).
-    private func reconstructBufferedGame() -> BoardEvent? {
-        guard !fileSnapshots.isEmpty else { return nil }
+    /// `nil` for an empty buffer (firmware quirk — nothing to import). A game
+    /// that lost frames is reported incomplete even if the moves it kept replay
+    /// cleanly: the lost frame may have been the last ply.
+    private func reconstructBufferedGame(forceIncomplete: Bool = false) -> BoardEvent? {
+        let lostFrames = forceIncomplete || unreadableFileSnapshots > 0
+        guard !fileSnapshots.isEmpty else {
+            return lostFrames ? .storedGameImported(moves: [], sanMoves: [], isComplete: false) : nil
+        }
         switch ChessnutStoredGameDecoder.reconstruct(snapshots: fileSnapshots) {
         case .success(let reconstruction):
             return .storedGameImported(
                 moves: reconstruction.moves,
                 sanMoves: reconstruction.sanMoves,
-                isComplete: reconstruction.isComplete
+                isComplete: reconstruction.isComplete && !lostFrames
             )
         case .failure:
             // The stream did not start from the initial position, so no moves
