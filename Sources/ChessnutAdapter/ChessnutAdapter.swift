@@ -523,11 +523,22 @@ public struct ChessnutAdapter: BoardAdapter {
         guard filesRemaining == 0 && !fileTransferActive else { return [] }
         filesRemaining = Int(frame[2])
         expectedFileCount = filesRemaining
-        guard filesRemaining > 0 else { return [] }   // no stored games
+        guard filesRemaining > 0 else {                // no stored games
+            queueRealtimeMode()
+            return []
+        }
         // Enter upload mode once (0x21 01 01), then request the first game.
         pendingResponses.append(Data([Opcode.mode, 0x01, 0x01]))
         queueNextGameRequest()
         return []
+    }
+
+    /// Return the board to realtime mode (`0x21 01 00`) once a listing/download
+    /// is over. The download put it in upload mode, where it does not stream
+    /// live frames; without this a game started on the same connection would
+    /// see no board updates until reconnect. [C-REF] `switchMode(0x00)`.
+    private mutating func queueRealtimeMode() {
+        pendingResponses.append(Data([Opcode.mode, 0x01, 0x00]))
     }
 
     /// Queue the per-game request pair the board expects before each transfer:
@@ -556,7 +567,7 @@ public struct ChessnutAdapter: BoardAdapter {
             fileTransferActive = false
             let event = reconstructBufferedGame()
             filesRemaining = max(0, filesRemaining - 1)
-            if filesRemaining > 0 { queueNextGameRequest() }
+            if filesRemaining > 0 { queueNextGameRequest() } else { queueRealtimeMode() }
             fileSnapshots.removeAll(keepingCapacity: true)
             return event.map { [$0] } ?? []
         default:

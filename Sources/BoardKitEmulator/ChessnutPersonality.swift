@@ -72,6 +72,10 @@ public struct ChessnutPersonality: BoardPersonality {
     /// drained one per 0x34 start-import).
     private var replayQueue: [[[Piece?]]] = []
 
+    /// True between `0x21 01 01` (upload mode) and `0x21 01 00` (realtime).
+    /// Like a real board, the personality streams no live frames meanwhile.
+    private var inUploadMode = false
+
     /// File-major (a1=0…h8=63) identity of the initial position — the anchor a
     /// board reset returns to and every recording begins from.
     static let initialFileMajorIdentity: [Piece?] = {
@@ -133,7 +137,7 @@ public struct ChessnutPersonality: BoardPersonality {
         case .squareSensed(let square, let isLift, let piece):
             applySensed(square: square, isLift: isLift, piece: piece)
             recordSettledPosition()
-            return [boardStateFrame()]
+            return inUploadMode ? [] : [boardStateFrame()]
 
         case .identitySnapshot(let snapshot):
             if snapshot.count == 64 {
@@ -141,7 +145,7 @@ public struct ChessnutPersonality: BoardPersonality {
                 airborne.removeAll()
             }
             recordSettledPosition()
-            return [boardStateFrame()]
+            return inUploadMode ? [] : [boardStateFrame()]
 
         case .occupancySnapshot:
             // Identity board — an occupancy-only snapshot cannot be encoded
@@ -184,6 +188,7 @@ public struct ChessnutPersonality: BoardPersonality {
             // A real board pushes a fresh frame immediately — do the same.
             let mode = frame.count > 2 ? frame[2] : 0xFF
             var actions: [PeripheralAction] = [.log("chessnut: mode switch 0x\(String(mode, radix: 16))")]
+            inUploadMode = (mode == 0x01)
             if mode == 0x00 {
                 actions.append(.notify(boardStateFrame()))
             }

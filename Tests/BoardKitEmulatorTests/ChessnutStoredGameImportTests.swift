@@ -205,7 +205,9 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
 @Test func emptyCatalogFinishesWithoutAReconstructedGame() {
     var adapter = ChessnutAdapter()
     var personality = ChessnutPersonality(storedGames: [])
-    #expect(runStoredGameImport(adapter: &adapter, personality: &personality).isEmpty)
+    let events = runStoredGameImport(adapter: &adapter, personality: &personality)
+    // Only the live frame from returning to realtime mode; no imported game.
+    #expect(importedGames(events).isEmpty)
     #expect(adapter.storedGameImportProgress.expectedFileCount == 0)
     #expect(adapter.storedGameImportProgress.completedFileCount == 0)
     #expect(adapter.storedGameImportProgress.isFinished)
@@ -256,4 +258,37 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
     #expect(games.map(\.sans) == [["Nf3", "d5"]])
     #expect(adapter.storedGameImportProgress.expectedFileCount == 1)
     #expect(adapter.storedGameImportProgress.isFinished)
+}
+
+@Test func importReturnsTheBoardToRealtimeSoLiveFramesResume() {
+    var personality = ChessnutPersonality(storedGames: [StoredGameFixture.snapshots(["e4", "e5"])])
+    var adapter = ChessnutAdapter()
+    // The download's own handshake switches the board into upload mode, where
+    // it streams no live frames.
+    _ = personality.handleHostWrite(Data([0x21, 0x01, 0x01]))
+    #expect(personality.frames(for: .squareSensed(square: "e2", isLift: true, piece: nil)).isEmpty)
+    _ = personality.handleHostWrite(Data([0x21, 0x01, 0x00]))
+    _ = personality.frames(for: .squareSensed(square: "e2", isLift: false, piece: nil))
+
+    _ = runStoredGameImport(adapter: &adapter, personality: &personality)
+
+    // After the import completes, a move on the board must reach the host.
+    let live = personality.frames(for: .squareSensed(square: "d2", isLift: true, piece: nil))
+    #expect(!live.isEmpty)
+}
+
+@Test func finalGameEndQueuesRealtimeModeLast() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x02]))
+    _ = adapter.takePendingResponses()
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE, 0x37, 0x01, 0xED]))
+    #expect(adapter.takePendingResponses().last != Data([0x21, 0x01, 0x00]))
+    _ = adapter.feed(bytes: Data([0x37, 0x01, 0xBE, 0x37, 0x01, 0xED]))
+    #expect(adapter.takePendingResponses() == [Data([0x21, 0x01, 0x00])])
+}
+
+@Test func emptyListingReturnsTheBoardToRealtime() {
+    var adapter = ChessnutAdapter()
+    _ = adapter.feed(bytes: Data([0x32, 0x01, 0x00]))
+    #expect(adapter.takePendingResponses() == [Data([0x21, 0x01, 0x00])])
 }
