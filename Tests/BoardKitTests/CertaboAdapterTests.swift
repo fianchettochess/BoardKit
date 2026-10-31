@@ -735,6 +735,13 @@ private func standardStartTags() -> [CertaboTagID] {
     var events: [BoardEvent] = []
     for _ in 0..<3 { events += adapter.feed(bytes: rfidFrameData(unknown)) }
     #expect(sensed(from: events).isEmpty)
+    // The session derives occupancy from snapshots, so none may read e2 as empty.
+    let e2 = 4 * 8 + 1
+    for event in events {
+        if case .identitySnapshot(let identity) = event { #expect(identity[e2] != nil) }
+        if case .occupancySnapshot(let occupancy) = event { #expect(occupancy[e2]) }
+    }
+    #expect(events.contains { if case .occupancySnapshot = $0 { true } else { false } })
 
     // Back to the known pawn: still no phantom place.
     var back: [BoardEvent] = []

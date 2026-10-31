@@ -721,7 +721,10 @@ public struct CertaboAdapter: BoardAdapter {
 
         if calibration != nil {
             // ── Calibrated path ──────────────────────────────────────────────
-            events.append(.identitySnapshot(identity))
+            // An unknown tag has no identity, and nil in an identity snapshot means
+            // empty: the session would read an occupied square as vacated. A frame
+            // holding one reports what it knows for certain, its occupancy.
+            events.append(unknownSquares.isEmpty ? .identitySnapshot(identity) : .occupancySnapshot(occupancy))
             if let prev = previousIdentity {
                 events += squareSensedDeltas(
                     previous: prev, current: identity,
