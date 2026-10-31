@@ -1,5 +1,6 @@
 import Foundation
 import ChessCore
+import BoardKit
 #if canImport(os)
 import os
 
@@ -119,12 +120,18 @@ public enum SquareOffParser {
         switch message.code {
         case "0":
             guard message.body.count == 3 else { return .raw(message) }
-            let square = String(message.body.prefix(2))
+            // A frame that is not a real square plus u/d is not a field
+            // update: forwarding it would hand consumers a square they
+            // cannot index.
+            let square = String(message.body.prefix(2)).lowercased()
             let suffix = message.body.last
-            return .fieldUpdate(square: square.lowercased(), isLift: suffix == "u")
+            guard ChessBoardGeometry.boardOccupancyIndex(for: square) != nil,
+                  suffix == "u" || suffix == "d" else { return .raw(message) }
+            return .fieldUpdate(square: square, isLift: suffix == "u")
         case "30":
-            let occ = message.body.prefix(64).map { $0 == "1" }
-            guard occ.count == 64 else { return .raw(message) }
+            let bits = message.body.prefix(64)
+            guard bits.count == 64, bits.allSatisfy({ $0 == "0" || $0 == "1" }) else { return .raw(message) }
+            let occ = bits.map { $0 == "1" }
             return .boardState(occupancy: occ)
         case "14":
             if message.body == "GO" { return .newGameReady }

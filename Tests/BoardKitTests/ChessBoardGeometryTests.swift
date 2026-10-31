@@ -45,4 +45,13 @@ struct ChessBoardGeometryTests {
         #expect(ChessBoardGeometry.flippedSquare("i1") == nil)
         #expect(ChessBoardGeometry.flippedSquare("e44") == nil)
     }
+
+    /// "e0", "!4" and "14" each put an ASCII scalar below "a" or "1" into an
+    /// unsigned subtraction, which traps rather than returning nil.
+    @Test func testBoardOccupancyIndexRejectsMalformedWithoutTrapping() {
+        for bad in ["e0", "14", "!4", "e9", "z4", "", "e", "e44", "E4"] {
+            #expect(ChessBoardGeometry.boardOccupancyIndex(for: bad) == nil, "\(bad)")
+        }
+        #expect(ChessBoardGeometry.boardOccupancyIndex(for: "e4") == 35)
+    }
 }
