@@ -151,6 +151,14 @@ public protocol BoardAdapter: Sendable {
     /// Empty. Boards with no acknowledgement or response protocol inherit the
     /// default and need not implement it.
     mutating func takePendingResponses() -> [Data]
+
+    /// Abandon any stored-game download in progress. Call when the user cancels
+    /// the import or the transport's timeout fires, then drain
+    /// ``takePendingResponses()`` and write the result to the board.
+    ///
+    /// ## Default
+    /// No-op, for boards that have no ``BoardCapabilities/gameArchive``.
+    mutating func cancelStoredGameImport()
 }
 
 public extension BoardAdapter {
@@ -159,4 +167,7 @@ public extension BoardAdapter {
 
     /// Default: no out-of-band responses. Only ack-based protocols override this.
     mutating func takePendingResponses() -> [Data] { [] }
+
+    /// Default: no stored-game download to abandon.
+    mutating func cancelStoredGameImport() {}
 }
