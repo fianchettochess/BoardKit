@@ -309,6 +309,17 @@ public struct MillenniumAdapter: BoardAdapter {
 
     public init() {}
 
+    /// Create an adapter that already knows the board is (or is not) rotated.
+    ///
+    /// A reconnect builds a fresh adapter, and detection only fires on a full
+    /// start position, so a mid-game snapshot after a link drop would decode
+    /// mirrored. Transports pass the orientation read from the previous
+    /// adapter's `isRotated`. Detection still overrides it on the next start
+    /// position.
+    public init(isRotated: Bool) {
+        self.isRotated = isRotated
+    }
+
     // MARK: - feed(bytes:)
 
     /// Decode raw wire bytes from BLE notifications or USB reads.
