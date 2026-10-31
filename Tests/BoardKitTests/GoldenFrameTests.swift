@@ -373,32 +373,39 @@ private func piece(at algebraic: String, in identity: [Piece?]) -> Piece? {
     #expect(readyCount == 1, "Expected exactly one .ready across both feeds; got \(readyCount)")
 }
 
-/// Finding 1 regression: a first frame that contains an invalid nibble
-/// (0xD–0xF) must still emit .ready.  The .raw flag appended for the
-/// invalid nibble must not prevent .ready from being emitted.
-@Test func readyEmittedOnFirstFrameWithInvalidNibble() {
-    // Build an otherwise-valid 36-byte board-state frame but corrupt
-    // the HIGH nibble of byte[2] to 0xD (invalid per spec).
-    // byte[2] low nibble = h8, high nibble = g8.
-    // Setting high nibble to 0xD leaves h8 as 0x8 (black rook, valid).
-    var frame = [UInt8](repeating: 0, count: 36)
-    frame[0] = 0x01; frame[1] = 0x22
-    frame[2] = 0xD8   // high nibble = 0xD (invalid), low nibble = 8 (black rook)
+/// An unreadable (0xD–0xF) nibble decodes to an empty square, which would read
+/// as a lift. The frame is surfaced as .raw alone: no snapshot, no deltas, no
+/// .ready, and the previous good frame stays the baseline (Fianchetto-b32.55).
+@Test func invalidNibbleFrameIsRawOnlyAndKeepsBaseline() {
+    var good = [UInt8](repeating: 0, count: 36)
+    good[0] = 0x01; good[1] = 0x22
+    good[2] = 0x08   // h8 black rook
+    var bad = good
+    bad[2] = 0xD8    // g8 unreadable, h8 still a black rook
+    bad[3] = 0xF0    // plus a second unreadable square
+    var lifted = good
+    lifted[2] = 0x00 // h8 rook genuinely lifted
 
     var adapter = ChessnutAdapter()
-    let events = adapter.feed(bytes: Data(frame))
+    let first = adapter.feed(bytes: Data(bad))
+    #expect(first.count == 1)
+    #expect(first.allSatisfy { if case .raw = $0 { return true }; return false })
 
-    // Must contain .identitySnapshot.
-    #expect(events.contains { if case .identitySnapshot = $0 { return true }; return false },
-            "Expected .identitySnapshot even on a frame with an invalid nibble")
+    // Baseline is established by the first clean frame, which is still "first".
+    let second = adapter.feed(bytes: Data(good))
+    #expect(second.contains { if case .ready = $0 { return true }; return false })
 
-    // Must contain .raw (the corruption flag).
-    #expect(events.contains { if case .raw = $0 { return true }; return false },
-            "Expected .raw event for the invalid nibble")
+    let corrupt = adapter.feed(bytes: Data(bad))
+    #expect(corrupt.count == 1)
+    #expect(corrupt.allSatisfy { if case .raw = $0 { return true }; return false })
 
-    // Must still contain .ready (finding 1: .raw must not suppress .ready).
-    let readyCount = events.filter { if case .ready = $0 { return true }; return false }.count
-    #expect(readyCount == 1, "Expected .ready on first frame even when an invalid nibble appends .raw; got \(readyCount)")
+    // The corrupt frame did not overwrite the baseline: the real lift still shows.
+    let after = adapter.feed(bytes: Data(lifted))
+    let sensed = after.compactMap { e -> String? in
+        if case .squareSensed(let sq, let lift, _) = e { return "\(lift ? "lift" : "place") \(sq)" }
+        return nil
+    }
+    #expect(sensed == ["lift h8"])
 }
 
 // MARK: - Regression: resetFraming (finding 2)

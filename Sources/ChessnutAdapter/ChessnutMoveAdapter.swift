@@ -405,18 +405,17 @@ public struct ChessnutMoveAdapter: BoardAdapter {
         }
         let isFirstFrame = (previousIdentity == nil)
 
-        // Decode via shared codec; 0xD–0xF nibbles flagged but not fatal.
+        // Decode via shared codec. An invalid (0xD–0xF) nibble decodes to an
+        // empty square and would read as a lift, so the frame is surfaced as
+        // .raw only and previousIdentity is left as it was.
         let (identity, hasInvalidNibble) = chessnutDecodeBoard(from: frame, start: 2)
+        if hasInvalidNibble { return [.raw(Data(frame))] }
 
         var events: [BoardEvent] = []
         events.append(.identitySnapshot(identity))
 
         if let prev = previousIdentity {
             events += chessnutDeltaEvents(prev: prev, curr: identity)
-        }
-
-        if hasInvalidNibble {
-            events.append(.raw(Data(frame)))
         }
 
         previousIdentity = identity

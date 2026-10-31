@@ -448,6 +448,10 @@ public struct CertaboAdapter: BoardAdapter {
     /// `nil` until the first frame is processed.
     private var previousIdentity: [Piece?]? = nil
 
+    /// File-major squares that held an unmapped tag in the last calibrated
+    /// frame: occupied, but identity is `nil`.
+    private var previousUnknownSquares: Set<Int> = []
+
     /// Last emitted file-major occupancy array (occupancy boards + uncalibrated RFID).
     private var previousOccupancy: [Bool]? = nil
 
@@ -687,7 +691,7 @@ public struct CertaboAdapter: BoardAdapter {
 
         // Build file-major identity array, applying optional rotation.
         var identity = [Piece?](repeating: nil, count: 64)
-        var hasUnknownTags = false
+        var unknownSquares: Set<Int> = []
         var occupancy = [Bool](repeating: false, count: 64)
 
         for streamIdx in 0..<64 {
@@ -705,7 +709,7 @@ public struct CertaboAdapter: BoardAdapter {
                     // D6: non-empty unmapped tag → unknown; collapses to nil at
                     // FEN boundary. Session uses lastVotedTags to prompt recal.
                     occupancy[fm] = true
-                    hasUnknownTags = true
+                    unknownSquares.insert(fm)
                 }
             } else {
                 // Uncalibrated: record occupancy from non-empty tag.
@@ -719,13 +723,15 @@ public struct CertaboAdapter: BoardAdapter {
             // ── Calibrated path ──────────────────────────────────────────────
             events.append(.identitySnapshot(identity))
             if let prev = previousIdentity {
-                events += squareSensedDeltas(previous: prev, current: identity)
+                events += squareSensedDeltas(
+                    previous: prev, current: identity,
+                    previousUnknown: previousUnknownSquares, currentUnknown: unknownSquares)
             }
             // D6: unknown tags signal re-calibration need. Session reads
             // lastVotedTags (already updated in processRFIDTokens) to build
             // the prompt. No .raw emission — .raw is for capture-log research.
-            _ = hasUnknownTags  // acknowledged; session polls lastVotedTags
             previousIdentity = identity
+            previousUnknownSquares = unknownSquares
         } else {
             // ── Uncalibrated path ─────────────────────────────────────────────
             // Emit occupancy events. Session reads lastVotedTags (already
@@ -740,6 +746,7 @@ public struct CertaboAdapter: BoardAdapter {
             // An all-nil array here would look like a valid prior snapshot and
             // trigger up to 32 spurious .squareSensed(place) events.
             previousIdentity = nil
+            previousUnknownSquares = []
         }
 
         if isFirst {
@@ -821,12 +828,27 @@ public struct CertaboAdapter: BoardAdapter {
 
     // MARK: - Delta helpers
 
-    private func squareSensedDeltas(previous: [Piece?], current: [Piece?]) -> [BoardEvent] {
+    /// `previousUnknown` / `currentUnknown` mark squares holding an unmapped
+    /// tag (occupied, identity `nil`). Such a square cannot be told apart from a
+    /// lift or placement by identity alone, so only a real occupancy change is
+    /// reported there, with no piece.
+    private func squareSensedDeltas(
+        previous: [Piece?], current: [Piece?],
+        previousUnknown: Set<Int>, currentUnknown: Set<Int>
+    ) -> [BoardEvent] {
         var events: [BoardEvent] = []
         for fm in 0..<64 {
             let p = previous[fm]; let c = current[fm]
-            guard p != c else { continue }
             let sq = Self.fileMajorToAlgebraic(fm)
+            if previousUnknown.contains(fm) || currentUnknown.contains(fm) {
+                let wasOccupied = p != nil || previousUnknown.contains(fm)
+                let isOccupied = c != nil || currentUnknown.contains(fm)
+                if wasOccupied != isOccupied {
+                    events.append(.squareSensed(square: sq, isLift: wasOccupied, piece: nil))
+                }
+                continue
+            }
+            guard p != c else { continue }
             if p == nil {
                 // empty → occupied: place event.
                 events.append(.squareSensed(square: sq, isLift: false, piece: c))

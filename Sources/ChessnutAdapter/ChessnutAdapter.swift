@@ -493,9 +493,13 @@ public struct ChessnutAdapter: BoardAdapter {
         let isFirstFrame = (previousIdentity == nil)
 
         // Decode 64 squares via shared codec (ChessnutShared.swift).
-        // 0xD–0xF nibbles are flagged but the rest of the frame is still used.
-        // [SWIFT-REF] throws on invalid nibbles; we continue conservatively.
+        // [SWIFT-REF] throws on invalid nibbles. A 0xD–0xF nibble decodes to an
+        // empty square, which would read as a lift (a corrupt e4 looks like the
+        // pawn was picked up), so an invalid frame is surfaced as .raw only and
+        // leaves previousIdentity untouched; the next clean frame diffs against
+        // the last good one.
         let (identity, hasInvalidNibble) = chessnutDecodeBoard(from: frame, start: 2)
+        if hasInvalidNibble { return [.raw(Data(frame))] }
 
         // Build events.
         var events: [BoardEvent] = []
@@ -506,11 +510,6 @@ public struct ChessnutAdapter: BoardAdapter {
         // Emit squareSensed deltas vs the previous snapshot (shared helper).
         if let prev = previousIdentity {
             events += chessnutDeltaEvents(prev: prev, curr: identity)
-        }
-
-        // First frame with invalid nibble: still emit what we have, but flag it.
-        if hasInvalidNibble {
-            events.append(.raw(Data(frame)))
         }
 
         previousIdentity = identity

@@ -474,18 +474,30 @@ private let f4LEDBytes = Data([
 }
 
 @Test func malformedInvalidNibble() {
-    // Frame with invalid nibble (0xD–0xF) must still emit identitySnapshot
-    // AND raw flag AND .ready (first frame).
-    var frame = [UInt8](repeating: 0, count: 38)
-    frame[0] = 0x01; frame[1] = 0x24
-    frame[2] = 0xD8   // high nibble 0xD = invalid; low nibble 8 = black rook
-    var adapter = ChessnutMoveAdapter()
-    let events  = adapter.feed(bytes: Data(frame))
+    // A frame with an invalid nibble (0xD–0xF) is .raw only: no snapshot, no
+    // deltas, and the last good frame stays the baseline (Fianchetto-b32.55).
+    var bad = [UInt8](repeating: 0, count: 38)
+    bad[0] = 0x01; bad[1] = 0x24
+    bad[2] = 0xD8   // high nibble 0xD = invalid; low nibble 8 = black rook
+    var good = bad
+    good[2] = 0x08
+    var lifted = good
+    lifted[2] = 0x00
 
-    #expect(events.contains { if case .identitySnapshot = $0 { return true }; return false })
-    #expect(events.contains { if case .raw              = $0 { return true }; return false })
-    let readyCount = events.filter { if case .ready = $0 { return true }; return false }.count
-    #expect(readyCount == 1, "Invalid nibble must not suppress .ready on first frame")
+    var adapter = ChessnutMoveAdapter()
+    let first = adapter.feed(bytes: Data(bad))
+    #expect(first.count == 1)
+    #expect(first.allSatisfy { if case .raw = $0 { return true }; return false })
+
+    let ready = adapter.feed(bytes: Data(good))
+    #expect(ready.contains { if case .ready = $0 { return true }; return false })
+
+    _ = adapter.feed(bytes: Data(bad))
+    let after = adapter.feed(bytes: Data(lifted))
+    let d = deltas(from: after)
+    #expect(d.count == 1)
+    #expect(d.first?.square == "h8")
+    #expect(d.first?.isLift == true)
 }
 
 @Test func malformedPartialFrameAccumulates() {
