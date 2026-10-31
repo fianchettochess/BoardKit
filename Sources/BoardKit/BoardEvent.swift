@@ -49,7 +49,8 @@ public enum BoardEvent: Sendable {
     ///
     /// Occupancy-only adapters (Square Off, DGT Pegasus) emit this.
     /// Identity boards (Chessnut) emit `identitySnapshot` and can derive
-    /// occupancy from it; they do not duplicate-emit this case.
+    /// occupancy from it; they do not duplicate-emit this case. Certabo sends
+    /// this in place of an identity snapshot while a square holds an unknown tag.
     case occupancySnapshot([Bool])
 
     /// Full 64-element piece-identity snapshot. `nil` = empty square.

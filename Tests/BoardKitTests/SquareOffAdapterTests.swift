@@ -57,6 +57,19 @@ struct SquareOffAdapterTests {
         #expect(place.contains { if case .squareSensed("e4", false, _) = $0 { return true }; return false })
     }
 
+    @Test("Malformed field updates and board states yield raw only, never a sensed square")
+    func malformedFramesAreRaw() {
+        let badFrames = ["0#e0u*", "0#!4u*", "0#14u*", "0#e9d*", "0#e4x*", "0#e4U*",
+                         "30#\(String(repeating: "x", count: 64))*",
+                         "30#\(String(repeating: "2", count: 64))*"]
+        for frame in badFrames {
+            var adapter = SquareOffAdapter()
+            let events = adapter.feed(bytes: Data(frame.utf8))
+            #expect(events.count == 1, "\(frame)")
+            #expect(events.allSatisfy { if case .raw = $0 { return true }; return false }, "\(frame)")
+        }
+    }
+
     @Test("A frame split across two feeds reassembles into one snapshot")
     func splitFrameReassembles() throws {
         var adapter = SquareOffAdapter()

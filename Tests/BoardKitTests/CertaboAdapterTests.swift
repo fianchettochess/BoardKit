@@ -720,6 +720,56 @@ private func standardStartTags() -> [CertaboTagID] {
     #expect(place?.piece  == Piece(type: .pawn, color: .white))
 }
 
+/// A tag the calibration does not know (a third queen) must not read as the
+/// calibrated piece being lifted, nor as a place when it resolves again.
+@Test func unknownTagOnOccupiedSquareEmitsNoLift() throws {
+    let startTags = standardStartTags()
+    let cal = CertaboCalibration.learn(from: [startTags])
+    var adapter = CertaboAdapter(calibration: cal)
+    _ = adapter.feed(bytes: rfidFrameData(startTags))
+
+    // e2 now carries a tag the calibration has never seen. Three frames so the
+    // majority vote settles on it.
+    var unknown = startTags
+    unknown[52] = CertaboTagID(9, 9, 9, 9, 9)
+    var events: [BoardEvent] = []
+    for _ in 0..<3 { events += adapter.feed(bytes: rfidFrameData(unknown)) }
+    #expect(sensed(from: events).isEmpty)
+    // The session derives occupancy from snapshots, so none may read e2 as empty.
+    let e2 = 4 * 8 + 1
+    for event in events {
+        if case .identitySnapshot(let identity) = event { #expect(identity[e2] != nil) }
+        if case .occupancySnapshot(let occupancy) = event { #expect(occupancy[e2]) }
+    }
+    #expect(events.contains { if case .occupancySnapshot = $0 { true } else { false } })
+
+    // Back to the known pawn: still no phantom place.
+    var back: [BoardEvent] = []
+    for _ in 0..<3 { back += adapter.feed(bytes: rfidFrameData(startTags)) }
+    #expect(sensed(from: back).isEmpty)
+}
+
+/// Lifting the unknown piece off is a real occupancy change; it is reported
+/// without claiming which piece.
+@Test func unknownTagLiftedReportsLiftWithoutPiece() throws {
+    let startTags = standardStartTags()
+    let cal = CertaboCalibration.learn(from: [startTags])
+    var adapter = CertaboAdapter(calibration: cal)
+    var unknown = startTags
+    unknown[52] = CertaboTagID(9, 9, 9, 9, 9)
+    for _ in 0..<3 { _ = adapter.feed(bytes: rfidFrameData(unknown)) }
+
+    var empty = startTags
+    empty[52] = .zero
+    var events: [BoardEvent] = []
+    for _ in 0..<3 { events += adapter.feed(bytes: rfidFrameData(empty)) }
+    let d = sensed(from: events)
+    #expect(d.count == 1)
+    #expect(d.first?.square == "e2")
+    #expect(d.first?.isLift == true)
+    #expect(d.first?.piece == nil)
+}
+
 @Test func calibratedIdentityCapture() throws {
     // Set up: white knight on f3, black pawn on e5 (after 1.e4 e5 Nf3).
     let startTags = standardStartTags()

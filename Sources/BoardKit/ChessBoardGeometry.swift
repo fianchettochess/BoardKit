@@ -37,8 +37,8 @@ public enum ChessBoardGeometry {
               let rankScalar = chars[1].asciiValue,
               let aScalar = Character("a").asciiValue,
               let oneScalar = Character("1").asciiValue else { return nil }
-        let file = Int(fileScalar - aScalar)
-        let rank = Int(rankScalar - oneScalar)
+        let file = Int(fileScalar) - Int(aScalar)
+        let rank = Int(rankScalar) - Int(oneScalar)
         guard (0..<8).contains(file), (0..<8).contains(rank) else { return nil }
         return file * 8 + rank
     }

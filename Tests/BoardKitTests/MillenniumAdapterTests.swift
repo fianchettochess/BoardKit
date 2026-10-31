@@ -321,6 +321,26 @@ private let f5WireBytes = Data([
             "Full 64-char rotated start payload must set isRotated=true")
 }
 
+@Test func restoredOrientationDecodesMidGameSnapshotAfterReconnect() {
+    // Native mid-game: 1.e4 played. Rotated board reports the exact reversal,
+    // which is not a start signature, so detection cannot recover orientation.
+    var native = Array("rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR".utf8)
+    native[48 + 4] = UInt8(ascii: ".")   // e2 empty
+    native[32 + 4] = UInt8(ascii: "P")   // e4 pawn
+    let rotatedWire = millenniumBuildFrame([UInt8(ascii: "s")] + Array(native.reversed()))
+
+    var lost = MillenniumAdapter()   // reconnect without orientation
+    var restored = MillenniumAdapter(isRotated: true)
+    let lostIdentity = firstIdentitySnapshot(from: lost.feed(bytes: rotatedWire))
+    let restoredIdentity = firstIdentitySnapshot(from: restored.feed(bytes: rotatedWire))
+
+    #expect(restoredIdentity.flatMap { piece(at: "e4", in: $0) } != nil)
+    #expect(restoredIdentity.flatMap { piece(at: "e2", in: $0) } == nil)
+    #expect(lostIdentity.flatMap { piece(at: "e4", in: $0) } == nil,
+            "Without restored orientation the snapshot decodes mirrored")
+    #expect(restored.isRotated)
+}
+
 @Test func orientationFalsePositiveKQEndgameSafe() {
     // A position with white K on D8 (payload[3]='K') and white Q on E8
     // (payload[4]='Q') must NOT flip isRotated under the full-match algorithm.
