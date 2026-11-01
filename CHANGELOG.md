@@ -14,6 +14,12 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.14.0] — 2026-10-31
+
+### Changed
+
+- Requires ChessCore 0.13.1 or a later 0.13 patch.
+
 ## [0.13.0] — 2026-10-31
 
 Breaking for consumers because the ChessCore range moves to `0.12.0 ..< 0.13.0`.
