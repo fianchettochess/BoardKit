@@ -56,7 +56,7 @@ Add BoardKit to your package dependencies:
 BoardKit is pre-1.0, and under `0.x` the minor is the breaking position — see
 [CHANGELOG.md](CHANGELOG.md). Prefer `.upToNextMinor(from:)` over `from:`:
 SwiftPM does not special-case `0.x`, so `from: "0.16.0"` spans `0.16.0 ..< 1.0.0`
-and would accept a breaking `0.16.0`.
+and would accept a breaking `0.17.0`.
 
 > **Versions before 0.7.0 cannot be resolved from a URL at all.** Their manifest
 > probed the filesystem for a sibling ChessCore and found SwiftPM's own
