@@ -50,13 +50,13 @@ graph.
 Add BoardKit to your package dependencies:
 
 ```swift
-.package(url: "https://github.com/fianchettochess/BoardKit.git", .upToNextMinor(from: "0.8.0"))
+.package(url: "https://github.com/fianchettochess/BoardKit.git", .upToNextMinor(from: "0.15.0"))
 ```
 
 BoardKit is pre-1.0, and under `0.x` the minor is the breaking position — see
 [CHANGELOG.md](CHANGELOG.md). Prefer `.upToNextMinor(from:)` over `from:`:
-SwiftPM does not special-case `0.x`, so `from: "0.8.0"` spans `0.8.0 ..< 1.0.0`
-and would accept a breaking `0.9.0`.
+SwiftPM does not special-case `0.x`, so `from: "0.15.0"` spans `0.15.0 ..< 1.0.0`
+and would accept a breaking `0.16.0`.
 
 > **Versions before 0.7.0 cannot be resolved from a URL at all.** Their manifest
 > probed the filesystem for a sibling ChessCore and found SwiftPM's own
@@ -325,7 +325,7 @@ On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
 image through the same versioned ChessCore dependency path used by consumers.
 
 The manifest declares one ordinary versioned ChessCore dependency —
-`.upToNextMinor(from: "0.9.0")` — and knows nothing about how your checkout is
+`.upToNextMinor(from: "0.14.0")` — and knows nothing about how your checkout is
 arranged. The requirement is a range rather than a pin so that a program
 depending on both BoardKit and ChessCore can choose its own ChessCore within
 that minor; an `exact:` requirement in a library propagates to every consumer

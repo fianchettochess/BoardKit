@@ -34,7 +34,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: BoardKit
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Check release tags have changelog entries
+        working-directory: BoardKit
+        run: scripts/check-changelog-tags.sh
 
       # ChessCore is PUBLIC as of 2026-09-07, so nothing here needs a token to
       # resolve it. This step used to inject DOCS_PACKAGES_TOKEN as a git auth

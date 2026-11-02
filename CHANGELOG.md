@@ -55,6 +55,41 @@ BoardKit's own API changes are additive.
 - Certabo squares with an unknown tag report as occupied, so they no longer read
   as vacated on every frame.
 
+## [0.12.1] — 2026-10-29
+
+### Fixed
+
+- Chessnut and Millennium identity deltas now report a piece replaced between
+  frames as a lift and a place. All lifts precede all places in a frame, so a
+  capture completed within one frame can be recognized instead of leaving the
+  moving piece apparently in hand.
+
+## [0.12.0] — 2026-10-24
+
+### Added
+
+- `BoardIdentityCheck` checks inferred moves and diff resolutions against sensed
+  piece identities, helping identity boards reject occupancy matches involving
+  the wrong piece.
+
+## [0.11.0] — 2026-10-24
+
+### Added
+
+- Chessnut stored-game import exposes download progress.
+
+### Fixed
+
+- Repeated file-end notifications no longer duplicate archived games, and
+  notification framing is independent for the live and file endpoints.
+
+## [0.10.1] — 2026-09-19
+
+### Fixed
+
+- Disambiguated occupancy-string construction for Swift 6.4; the resulting
+  strings are unchanged.
+
 ## [0.10.0] — 2026-09-03
 
 Breaking for consumers, though BoardKit's own API is unchanged: this release
@@ -77,6 +112,14 @@ finds that out as a resolution failure rather than a compile error.
   occupancy bits rather than piece identities — so nothing here changes
   behaviour. The bump exists because BoardKit's range was the binding
   constraint stopping its consumers from adopting 0.11.0 at all.
+
+## [0.9.0] — 2026-08-21
+
+### Changed
+
+- Requires ChessCore `0.10.0 ..< 0.11.0`, including its UCI parser fix for
+  fields that run to the end of a line. This dependency-range change is
+  breaking for consumers requiring a different ChessCore minor version.
 
 ## [0.8.0] — 2026-08-02
 
@@ -347,6 +390,15 @@ Chessnut Air family and Move, DGT Pegasus, Millennium, Certabo, ChessUp), the
 `ReplayTransport` / `SimulatedBoard` test harness, and the `boardkit-emulator`
 BLE peripheral with per-board personalities and a chaos engine.
 
+[0.15.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.15.0
+[0.14.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.14.0
+[0.13.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.13.0
+[0.12.1]: https://github.com/fianchettochess/BoardKit/releases/tag/0.12.1
+[0.12.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.12.0
+[0.11.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.11.0
+[0.10.1]: https://github.com/fianchettochess/BoardKit/releases/tag/0.10.1
+[0.10.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.10.0
+[0.9.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.9.0
 [0.8.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.8.0
 [0.7.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.7.0
 [0.6.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.6.0
