@@ -14,6 +14,14 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.17.0] — 2026-11-02
+
+### Changed
+
+- Requires ChessCore 0.16.0 or a later 0.16 patch. ChessCore 0.16.0 reads more
+  PGN move text, keeps note lines inside their record, and drops an en-passant
+  target on an occupied square, which can change a FEN-derived key.
+
 ## [0.16.0] — 2026-11-02
 
 ### Changed
@@ -402,6 +410,7 @@ Chessnut Air family and Move, DGT Pegasus, Millennium, Certabo, ChessUp), the
 `ReplayTransport` / `SimulatedBoard` test harness, and the `boardkit-emulator`
 BLE peripheral with per-board personalities and a chaos engine.
 
+[0.17.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.17.0
 [0.16.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.16.0
 [0.15.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.15.0
 [0.14.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.14.0
