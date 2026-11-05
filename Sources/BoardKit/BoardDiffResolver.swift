@@ -33,7 +33,7 @@ public enum BoardDiffResolver {
         maxDepth: Int = 3,
         limit: Int = 8
     ) -> [Resolution] {
-        guard targetOccupancy.count == 64 else { return [] }
+        guard targetOccupancy.count == 64, maxDepth > 0, limit > 0 else { return [] }
         let target = sortedOccupancyKey(targetOccupancy)
 
         // Quick check: already matches.
@@ -63,8 +63,13 @@ public enum BoardDiffResolver {
                     MoveGenerator.applyMoveUnchecked(&next, move)
                     let path = history + [move.uci]
                     if positionOccupancyKey(next) == target {
-                        matches.append(Resolution(moves: path))
-                        if matches.count >= 48 { break bfs }
+                        let resolution = Resolution(moves: path)
+                        // Unsupported histories must neither be offered nor
+                        // consume the match limit ahead of credible catch-up.
+                        if wanderCount(resolution, from: position, changed: changed) == 0 {
+                            matches.append(resolution)
+                            if matches.count >= 48 { break bfs }
+                        }
                     }
                     if depth < maxDepth { nextFrontier.append((next, path)) }
                 }
@@ -77,21 +82,7 @@ public enum BoardDiffResolver {
         }
         if matches.isEmpty { return [] }
 
-        // Rank by plausibility. A move "wanders" when it touches a square that is
-        // neither part of the occupancy change nor a capture target — the signature of
-        // a coincidental sequence (e.g. a queen sortie that merely reproduces the
-        // bit-count) rather than the move that actually happened. Resolutions that
-        // explain the change with NO wandering (a single legal capture into the changed
-        // square, a direct catch-up) are preferred and offered alone when present;
-        // otherwise only the least-wandering few are surfaced, so a plausible move
-        // is never buried under coincidental noise.
-        let scored = matches.map { (resolution: $0, wander: wanderCount($0, from: position, changed: changed)) }
-        let clean = scored.filter { $0.wander == 0 }.map { $0.resolution }
-        if !clean.isEmpty {
-            return Array(clean.sorted { $0.depth < $1.depth }.prefix(limit))
-        }
-        return Array(scored.sorted { ($0.wander, $0.resolution.depth) < ($1.wander, $1.resolution.depth) }
-                           .map { $0.resolution }.prefix(min(limit, 3)))
+        return Array(matches.prefix(limit))
     }
 
     /// How many move endpoints in a resolution fall outside the changed-squares set
