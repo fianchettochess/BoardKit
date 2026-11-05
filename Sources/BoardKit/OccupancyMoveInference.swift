@@ -44,6 +44,9 @@ public final class OccupancyMoveInference {
     private var b: String?
     private var c: String?
     private var d: String?
+    // Extra handling during a capture must not overwrite the actual mover.
+    // Distinct board squares bound this evidence to one board's worth of lifts.
+    private var additionalLifts: [String] = []
 
     public init() {}
 
@@ -73,6 +76,7 @@ public final class OccupancyMoveInference {
 
     public func reset() {
         a = nil; b = nil; c = nil; d = nil
+        additionalLifts.removeAll(keepingCapacity: true)
     }
 
     /// Drive the state machine with a field update. Returns one or more candidate moves
@@ -82,7 +86,7 @@ public final class OccupancyMoveInference {
         if isLift {
             // If the player re-lifts a square that already sits in a slot, treat it
             // as a no-op rather than poisoning the state with a duplicate entry.
-            if square == a || square == b || square == c || square == d {
+            if square == a || square == b || square == c || square == d || additionalLifts.contains(square) {
                 // Already known. Don't re-record.
             } else if a == nil {
                 a = square
@@ -94,9 +98,9 @@ public final class OccupancyMoveInference {
                 // forms a valid move.
                 c = square
             } else {
-                // Three pieces airborne is unusual — overwrite the oldest second
-                // lift slot rather than poisoning further.
-                c = square
+                // Preserve both earlier origins. An extra b5 lift followed by
+                // b6/c5 lifts and c5 placement must still propose Bxc5 from b6.
+                if additionalLifts.count < 62 { additionalLifts.append(square) }
             }
         } else {
             if square == b || square == d {
@@ -166,7 +170,7 @@ public final class OccupancyMoveInference {
     /// flushes it through `handle(...)`; the session re-feeds that
     /// flushing lift after commit so the opponent's move survives.
     private func isCastlingInProgress() -> Bool {
-        guard let placed = b, d == nil, let a else { return false }
+        guard additionalLifts.isEmpty, let placed = b, d == nil, let a else { return false }
         if let c {
             // Shape #1: both lifts seen.
             let pair = Set([a, c])
@@ -206,7 +210,7 @@ public final class OccupancyMoveInference {
     /// also legal and would be emitted first, recording Rf1/Kf1 instead of
     /// O-O.
     private func completedCastleUCI() -> String? {
-        guard let a, let b, let c, let d else { return nil }
+        guard additionalLifts.isEmpty, let a, let b, let c, let d else { return nil }
         let lifts = Set([a, c])
         let placements = Set([b, d])
         return Self.castleShapes.first { $0.lifts == lifts && $0.placements == placements }?.kingUCI
@@ -279,6 +283,10 @@ public final class OccupancyMoveInference {
         }
         if let c, let d, c != d {
             out.append(c + d)
+        }
+        for origin in additionalLifts {
+            if let b, origin != b { out.append(origin + b) }
+            if let d, origin != d { out.append(origin + d) }
         }
         // Castling encoded as two non-overlapping moves (king + rook).
         // Caller decides which pair forms the legal castling move.
