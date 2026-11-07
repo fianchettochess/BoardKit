@@ -254,6 +254,16 @@ var calibratedAdapter = CertaboAdapter(calibration: myCalibration)
 // After a calibrated RFID board frame arrives, capabilities gain .pieceIdentity.
 // Obtain a CertaboCalibration by calling CertaboCalibration.learn(from:standardStart:)
 // on a series of start-position RFID frames.
+
+// In a calibration UI, learnReporting says which squares to fix:
+let report = CertaboCalibration.learnReporting(from: frames)
+// report.collisions: tags voted on two squares (left out when the pieces differ)
+// report.unusableSquares: tags with three or more zero bytes, never usable
+
+// CertaboCalibration is Codable (versioned JSON), so store it and restore it
+// next launch instead of recalibrating:
+let saved = try JSONEncoder().encode(report.calibration)
+let restored = try JSONDecoder().decode(CertaboCalibration.self, from: saved)
 ```
 
 !!! note "Dynamic capabilities"

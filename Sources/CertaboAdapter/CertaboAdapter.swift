@@ -160,7 +160,14 @@ private enum CertaboBoardType: Sendable {
 /// Sources: [OFFICIAL] reader_writer.py calibration logic; [CER2NUT] CertaboCalibrator;
 /// D5: follow newer behavior (d6/d3 spare-queen squares, skip-if-empty).
 /// D10: 15-frame modal vote (official parity).
-public struct CertaboCalibration: Sendable {
+///
+/// ## Persistence
+///
+/// `Codable`, so a face can store the calibration and restore it next launch
+/// instead of asking the player to recalibrate. The stored form is versioned
+/// (``persistedFormatVersion``) and spelled out in `encode(to:)`; it does not
+/// depend on how ChessCore encodes `Piece`.
+public struct CertaboCalibration: Sendable, Equatable {
 
     // MARK: - Storage
 
@@ -202,9 +209,32 @@ public struct CertaboCalibration: Sendable {
     /// `true` when no tag-to-piece mappings have been learned.
     public var isEmpty: Bool { tagToPiece.isEmpty }
 
+    /// One learned tag and the piece it stands for.
+    public struct Entry: Equatable, Hashable, Sendable {
+        public let tag: CertaboTagID
+        public let piece: Piece
+
+        public init(tag: CertaboTagID, piece: Piece) {
+            self.tag = tag
+            self.piece = piece
+        }
+    }
+
+    /// Every learned tag, ordered by tag bytes so the order is stable across
+    /// runs. Rebuild with `init(tagToPieceMap:)` or restore with `Codable`.
+    public var entries: [Entry] {
+        tagToPiece
+            .map { Entry(tag: $0.key, piece: $0.value) }
+            .sorted { $0.tag.bytes.lexicographicallyPrecedes($1.tag.bytes) }
+    }
+
     // MARK: - Learn
 
     /// Build a calibration from a set of start-position frames.
+    ///
+    /// The calibration from ``learnReporting(from:standardStart:)``, without
+    /// the report. Prefer that variant in a calibration UI so the player can be
+    /// told which squares to fix.
     ///
     /// - Parameters:
     ///   - frames: Each element is a 64-element array of tag IDs in stream order
@@ -221,7 +251,44 @@ public struct CertaboCalibration: Sendable {
         from frames: [[CertaboTagID]],
         standardStart: Bool = true
     ) -> CertaboCalibration {
-        guard !frames.isEmpty else { return CertaboCalibration() }
+        learnReporting(from: frames, standardStart: standardStart).calibration
+    }
+
+    /// Two or more calibration squares voted the same tag.
+    public struct TagCollision: Equatable, Sendable {
+        public let tag: CertaboTagID
+        /// The squares (algebraic, a8 first) that voted `tag`.
+        public let squares: [String]
+        /// The piece each of `squares` expected, in the same order.
+        public let pieces: [Piece]
+    }
+
+    /// What `learnReporting` learned and what it could not use.
+    public struct LearnReport: Equatable, Sendable {
+        public let calibration: CertaboCalibration
+        /// Tags voted on more than one calibration square. When the squares
+        /// expect different pieces the tag is left out of `calibration`, so it
+        /// reads as unknown rather than as whichever piece came last.
+        public let collisions: [TagCollision]
+        /// Calibration squares (algebraic, a8 first) whose voted tag has three
+        /// or more zero bytes without being all-zero. `piece(for:)` treats such a
+        /// tag as an empty square, so it can never identify a piece and is left
+        /// out of `calibration`.
+        public let unusableSquares: [String]
+
+        /// `true` when every occupied calibration square produced a usable,
+        /// unique tag.
+        public var isClean: Bool { collisions.isEmpty && unusableSquares.isEmpty }
+    }
+
+    /// Build a calibration from start-position frames and report the tags it
+    /// could not use. Same vote and square map as `learn(from:standardStart:)`.
+    public static func learnReporting(
+        from frames: [[CertaboTagID]],
+        standardStart: Bool = true
+    ) -> LearnReport {
+        let empty = LearnReport(calibration: CertaboCalibration(), collisions: [], unusableSquares: [])
+        guard !frames.isEmpty else { return empty }
 
         // Step 1: modal (most frequent) tag ID per square across frames.
         let squareCount = 64
@@ -235,15 +302,40 @@ public struct CertaboCalibration: Sendable {
         }
 
         // Step 2: assign pieces to modal tag IDs at fixed stream-index positions.
-        guard standardStart else { return CertaboCalibration() }
-        var tagToPiece: [CertaboTagID: Piece] = [:]
+        guard standardStart else { return empty }
+        var claims: [CertaboTagID: [(streamIndex: Int, piece: Piece)]] = [:]
+        var unusable: [Int] = []
         for (streamIndex, piece) in standardCalibrationMap {
             guard streamIndex < squareCount else { continue }
             let id = voted[streamIndex]
             guard !id.isAllZero else { continue }  // D5: skip empty (spares optional)
-            tagToPiece[id] = piece
+            guard !id.isEffectivelyEmpty else { unusable.append(streamIndex); continue }
+            claims[id, default: []].append((streamIndex, piece))
         }
-        return CertaboCalibration(tagToPiece: tagToPiece)
+
+        var tagToPiece: [CertaboTagID: Piece] = [:]
+        var collisions: [TagCollision] = []
+        for (id, claimants) in claims {
+            let pieces = claimants.map(\.piece)
+            if claimants.count > 1 {
+                let ordered = claimants.sorted { $0.streamIndex < $1.streamIndex }
+                collisions.append(TagCollision(
+                    tag: id,
+                    squares: ordered.map { streamIndexAlgebraic($0.streamIndex) },
+                    pieces: ordered.map(\.piece)))
+            }
+            if Set(pieces).count == 1 { tagToPiece[id] = pieces[0] }
+        }
+        collisions.sort { $0.tag.bytes.lexicographicallyPrecedes($1.tag.bytes) }
+        return LearnReport(
+            calibration: CertaboCalibration(tagToPiece: tagToPiece),
+            collisions: collisions,
+            unusableSquares: unusable.sorted().map(streamIndexAlgebraic))
+    }
+
+    /// Stream index (a8 = 0 … h1 = 63) as an algebraic square.
+    private static func streamIndexAlgebraic(_ index: Int) -> String {
+        Square(file: index % 8, rank: 7 - index / 8).algebraic
     }
 
     /// Add new tag IDs to an existing calibration (add-piece mode).
@@ -291,6 +383,82 @@ public struct CertaboCalibration: Sendable {
         map.append((43, Piece(type: .queen, color: .white)))   // d3
         return map
     }()
+}
+
+// MARK: - Calibration persistence
+
+extension CertaboCalibration: Codable {
+
+    /// Version written by `encode(to:)` and the only one `init(from:)` reads.
+    /// Raise it (and keep a decoder for the old value) if the stored form
+    /// changes.
+    public static let persistedFormatVersion = 1
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case entries
+    }
+
+    /// `{"tag": [b0, b1, b2, b3, b4], "piece": "<FEN letter>"}`.
+    private struct StoredEntry: Codable {
+        let tag: [UInt8]
+        let piece: String
+    }
+
+    /// Stored form:
+    /// `{"version": 1, "entries": [{"tag": [3, 0, 84, 17, 200], "piece": "P"}, …]}`,
+    /// entries ordered as ``entries``; pieces are FEN letters (uppercase white).
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.persistedFormatVersion, forKey: .version)
+        try container.encode(entries.map { StoredEntry(tag: $0.tag.bytes, piece: $0.piece.fenChar) },
+                             forKey: .entries)
+    }
+
+    /// Restore a stored calibration. Throws on an unknown version, a tag that
+    /// is not five bytes, a letter that is not a FEN piece, or a tag stored
+    /// twice.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try container.decode(Int.self, forKey: .version)
+        guard version == Self.persistedFormatVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .version, in: container,
+                debugDescription: "Unsupported CertaboCalibration version \(version)")
+        }
+        var map: [CertaboTagID: Piece] = [:]
+        for stored in try container.decode([StoredEntry].self, forKey: .entries) {
+            guard stored.tag.count == 5,
+                  let piece = Self.piece(fenLetter: stored.piece)
+            else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .entries, in: container,
+                    debugDescription: "Unreadable calibration entry \(stored.tag) \(stored.piece)")
+            }
+            let tag = CertaboTagID(stored.tag[0], stored.tag[1], stored.tag[2], stored.tag[3], stored.tag[4])
+            guard map.updateValue(piece, forKey: tag) == nil else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .entries, in: container,
+                    debugDescription: "Calibration tag \(stored.tag) stored twice")
+            }
+        }
+        self.init(tagToPiece: map)
+    }
+
+    private static func piece(fenLetter: String) -> Piece? {
+        guard fenLetter.count == 1, let letter = fenLetter.first else { return nil }
+        let type: PieceType
+        switch letter.lowercased() {
+        case "k": type = .king
+        case "q": type = .queen
+        case "r": type = .rook
+        case "b": type = .bishop
+        case "n": type = .knight
+        case "p": type = .pawn
+        default: return nil
+        }
+        return Piece(type: type, color: letter.isUppercase ? .white : .black)
+    }
 }
 
 // MARK: - CertaboAdapter

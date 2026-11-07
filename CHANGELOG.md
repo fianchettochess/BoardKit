@@ -31,6 +31,21 @@ Published tags are never moved or re-cut.
   Pegasus, Millennium and ChessUp implementations now satisfy the requirement,
   so a generic transport reaches them. `ReplayTransport` resets its adapter on
   a scripted `.disconnected`.
+- `CertaboCalibration` is `Codable` and `Equatable`. The stored form is
+  versioned JSON (`persistedFormatVersion` 1: tags as five bytes, pieces as FEN
+  letters) and does not depend on ChessCore's `Piece` coding; decoding refuses
+  an unknown version, a malformed entry or a duplicated tag. `entries` lists
+  every learned tag in tag-byte order.
+- `CertaboCalibration.learnReporting(from:standardStart:)` returns the
+  calibration with the tags it could not use: `collisions` (one tag voted on
+  several squares) and `unusableSquares` (tags with three or more zero bytes).
+
+### Changed
+
+- `CertaboCalibration.learn(from:standardStart:)` leaves out a tag voted on
+  squares expecting different pieces, instead of keeping whichever came last,
+  and leaves out tags that can never identify a piece. A noisy read during
+  calibration now reads as unknown rather than as the wrong piece.
 
 ### Fixed
 

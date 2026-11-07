@@ -1221,3 +1221,109 @@ private func standardStartTags() -> [CertaboTagID] {
     #expect(adapter.rotate180)
     #expect(adapter.lastVotedTags == nil)
 }
+
+// MARK: - Calibration persistence and learn report (Fianchetto-b32.159)
+
+/// Stored calibration, version 1. This is the first persisted Certabo format,
+/// so there is no older payload to replay; this literal is the golden every
+/// later version must keep reading. Entries are in tag-byte order.
+private let storedCalibrationV1 = #"{"entries":[{"piece":"P","tag":[3,0,83,252,48]},{"piece":"r","tag":[3,0,84,252,1]},{"piece":"Q","tag":[3,0,86,100,43]}],"version":1}"#
+
+private let storedCalibrationV1Map: [CertaboTagID: Piece] = [
+    CertaboTagID(3, 0, 84, 252, 1): Piece(type: .rook, color: .black),
+    CertaboTagID(3, 0, 83, 252, 48): Piece(type: .pawn, color: .white),
+    CertaboTagID(3, 0, 86, 100, 43): Piece(type: .queen, color: .white),
+]
+
+/// Gates: a calibration saved by one launch reads back, and a calibration
+/// written today is byte-identical to the version-1 golden.
+/// Breaks if: a key, the piece letters, the tag encoding or the entry order
+/// changes, or the stored form starts leaning on ChessCore's `Piece` coding.
+/// User loses: after an update every saved calibration fails to load (or loads
+/// wrong pieces) and the player must re-place all 34 pieces to recalibrate.
+@Test func certaboCalibrationVersion1Golden() throws {
+    let decoded = try JSONDecoder().decode(CertaboCalibration.self, from: Data(storedCalibrationV1.utf8))
+    #expect(decoded == CertaboCalibration(tagToPieceMap: storedCalibrationV1Map))
+
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let written = try encoder.encode(CertaboCalibration(tagToPieceMap: storedCalibrationV1Map))
+    #expect(String(decoding: written, as: UTF8.self) == storedCalibrationV1)
+}
+
+/// Gates: a full start-position calibration (32 pieces + 2 spare queens)
+/// survives a JSON round trip exactly.
+/// Breaks if: some piece kind or colour fails to encode or decode.
+/// User loses: one piece type silently reads as unknown after relaunch.
+@Test func certaboCalibrationFullSetRoundTrips() throws {
+    let learned = CertaboCalibration.learn(from: [standardStartTags()])
+    #expect(learned.entries.count == 34)
+    // Stored order is tag order, so the same calibration always writes the same bytes.
+    let tags = learned.entries.map(\.tag.bytes)
+    #expect(zip(tags, tags.dropFirst()).allSatisfy { $0.lexicographicallyPrecedes($1) })
+    let data = try JSONEncoder().encode(learned)
+    #expect(try JSONDecoder().decode(CertaboCalibration.self, from: data) == learned)
+}
+
+/// Gates: a stored calibration the adapter cannot trust is refused, not
+/// half-loaded.
+/// Breaks if: the version check or an entry check is dropped.
+/// User loses: a future-format or damaged file loads as a calibration that
+/// names the wrong pieces, so moves are judged against pieces never placed.
+@Test(arguments: [
+    #"{"entries":[],"version":2}"#,
+    #"{"entries":[{"piece":"P","tag":[3,0,83,252]}],"version":1}"#,
+    #"{"entries":[{"piece":"x","tag":[3,0,83,252,48]}],"version":1}"#,
+    #"{"entries":[{"piece":"P","tag":[3,0,83,252,48]},{"piece":"p","tag":[3,0,83,252,48]}],"version":1}"#,
+])
+func certaboCalibrationRejectsUnreadableStore(_ json: String) {
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(CertaboCalibration.self, from: Data(json.utf8))
+    }
+}
+
+private struct LearnReportCase: Sendable, CustomTestStringConvertible {
+    let name: String
+    /// Stream index → replacement tag in the clean start frame.
+    let overrides: [Int: CertaboTagID]
+    let collisionSquares: [[String]]
+    let unusableSquares: [String]
+    /// The overriding tag's stored piece afterwards (`nil`: left out).
+    let storedPiece: Piece?
+    var testDescription: String { name }
+}
+
+private let learnReportCases: [LearnReportCase] = [
+    // Two white pawns vote the same tag: reported, and still a pawn either way.
+    LearnReportCase(name: "same-piece collision",
+                    overrides: [49: CertaboTagID(3, 0, 83, 252, 48)],
+                    collisionSquares: [["a2", "b2"]], unusableSquares: [],
+                    storedPiece: Piece(type: .pawn, color: .white)),
+    // a2 and a1 vote one tag: neither piece is trusted.
+    LearnReportCase(name: "cross-piece collision",
+                    overrides: [56: CertaboTagID(3, 0, 83, 252, 48)],
+                    collisionSquares: [["a2", "a1"]], unusableSquares: [],
+                    storedPiece: nil),
+    // e1 votes a tag with three zero bytes: it can never identify the king.
+    LearnReportCase(name: "unusable tag",
+                    overrides: [60: CertaboTagID(3, 0, 0, 0, 60)],
+                    collisionSquares: [], unusableSquares: ["e1"],
+                    storedPiece: nil),
+]
+
+/// Gates: learning reports tags it cannot use instead of silently mapping them.
+/// Breaks if: a duplicate vote goes back to last-writer-wins, or a noise-shaped
+/// tag is stored as a piece.
+/// User loses: one noisy read during calibration remaps a pawn as a rook (or
+/// leaves a king unidentifiable) with nothing telling them to recalibrate.
+@Test(arguments: learnReportCases)
+private func certaboLearnReportsUnusableTags(_ c: LearnReportCase) {
+    var frame = standardStartTags()
+    for (index, tag) in c.overrides { frame[index] = tag }
+    let report = CertaboCalibration.learnReporting(from: [frame])
+    #expect(report.collisions.map(\.squares) == c.collisionSquares)
+    #expect(report.unusableSquares == c.unusableSquares)
+    let tag = c.overrides.values.first
+    #expect(report.calibration.entries.first { $0.tag == tag }?.piece == c.storedPiece)
+    #expect(report.calibration == CertaboCalibration.learn(from: [frame]))
+}
