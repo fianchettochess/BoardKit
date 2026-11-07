@@ -1199,3 +1199,25 @@ private func standardStartTags() -> [CertaboTagID] {
     #expect(deltas.isEmpty,
             "First calibrated frame must not emit any squareSensed events (phantom deltas)")
 }
+
+// MARK: - resetFraming keeps configuration (Fianchetto-b32.202)
+
+/// Gates: a reconnect keeps what the host configured and what the board said
+/// about itself; only per-link state goes.
+/// Breaks if: resetFraming clears the calibration, rotation or detected board
+/// type along with the vote history.
+/// User loses: after a reconnect a calibrated RFID board stops reporting piece
+/// identity (or reads rotated) until they recalibrate or reconnect again.
+@Test func certaboResetKeepsCalibrationAndDetectedBoard() {
+    let tags = standardStartTags()
+    var adapter = CertaboAdapter(calibration: CertaboCalibration.learn(from: [tags]), rotate180: true)
+    _ = adapter.feed(bytes: rfidFrameData(tags))
+    #expect(adapter.capabilities.contains(.pieceIdentity))
+    #expect(adapter.lastVotedTags != nil)
+
+    adapter.resetFraming()
+    #expect(adapter.capabilities.contains(.pieceIdentity))
+    #expect(adapter.calibration?.isEmpty == false)
+    #expect(adapter.rotate180)
+    #expect(adapter.lastVotedTags == nil)
+}

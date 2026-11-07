@@ -29,7 +29,9 @@ import Foundation
 /// - On link established: yield `.connected`, execute
 ///   `adapter.handshakeCommands(isReconnect:)` with inter-command delays,
 ///   then let `adapter.feed()` emit `.ready` when the board ACKs.
-/// - On link drop: yield `.disconnected(error:)`.
+/// - On link drop: yield `.disconnected(error:)` and call
+///   `adapter.resetFraming()` (or build a fresh adapter) before the next
+///   connection's `handshakeCommands(isReconnect: true)`.
 /// - Note: This protocol is `@MainActor` because its implementers are
 ///   `@Observable` classes observed by SwiftUI (or SkipFuse on Android)
 ///   and its synchronous properties (`state`, `discovered`, …) are not

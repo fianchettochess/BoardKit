@@ -148,6 +148,12 @@ public struct SquareOffAdapter: BoardAdapter {
         }
     }
 
+    /// Drop any half-received `…*` message from the old link, so it is not
+    /// spliced onto the first message of the new one (losing that snapshot).
+    public mutating func resetFraming() {
+        framer.reset()
+    }
+
     public func handshakeCommands(isReconnect: Bool) -> [(command: BoardCommand, delayBefore: TimeInterval)] {
         if isReconnect {
             // Mid-game reconnect: request the current board state ONLY so the session

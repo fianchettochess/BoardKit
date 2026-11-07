@@ -24,6 +24,13 @@ Published tags are never moved or re-cut.
   Both Chessnut adapters name their endpoints with the shared
   `ChessnutNotificationEndpoint`; `ChessnutAdapter.NotificationEndpoint` is now
   a typealias for it.
+- `BoardAdapter.resetFraming()` is a protocol requirement with a no-op default.
+  Transports call it on every link drop, before the reconnect handshake.
+  `SquareOffAdapter` and `CertaboAdapter` implement it (Certabo keeps its
+  calibration, rotation and detected board and LED type); the Chessnut,
+  Pegasus, Millennium and ChessUp implementations now satisfy the requirement,
+  so a generic transport reaches them. `ReplayTransport` resets its adapter on
+  a scripted `.disconnected`.
 
 ### Fixed
 

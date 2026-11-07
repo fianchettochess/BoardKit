@@ -41,7 +41,8 @@ public final class ReplayTransport<A: BoardAdapter>: @unchecked Sendable {
         case bytes(Data)
         /// Inject a lifecycle event directly into the output stream
         /// (bypasses the adapter parser — use for `.connected`,
-        /// `.disconnected`, etc.).
+        /// `.disconnected`, etc.). `.disconnected` also calls
+        /// `adapter.resetFraming()`, as a transport does on a link drop.
         case lifecycle(BoardEvent)
         /// Record a delay. Not enforced during `runSync()`.
         case delay(TimeInterval)
@@ -73,11 +74,19 @@ public final class ReplayTransport<A: BoardAdapter>: @unchecked Sendable {
                 events += adapter.feed(bytes: data)
             case .lifecycle(let event):
                 events.append(event)
+                Self.applyLinkDrop(event, to: &adapter)
             case .delay:
                 break   // not enforced in synchronous mode
             }
         }
         return events
+    }
+
+    /// A scripted `.disconnected` is a link drop: reset the adapter the way the
+    /// `BoardTransport` contract requires, so bytes after a later `.connected`
+    /// decode as a new link.
+    private static func applyLinkDrop(_ event: BoardEvent, to adapter: inout A) {
+        if case .disconnected = event { adapter.resetFraming() }
     }
 
     /// Execute steps one at a time and return the events from each step,
@@ -94,6 +103,7 @@ public final class ReplayTransport<A: BoardAdapter>: @unchecked Sendable {
                 perStep.append(adapter.feed(bytes: data))
             case .lifecycle(let event):
                 perStep.append([event])
+                Self.applyLinkDrop(event, to: &adapter)
             case .delay:
                 perStep.append([])
             }

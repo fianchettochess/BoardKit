@@ -540,6 +540,25 @@ public struct CertaboAdapter: BoardAdapter {
         []
     }
 
+    /// Discard the old link's partial line, vote histories, previous board
+    /// state and `lastVotedTags`, and re-arm `.ready`.
+    ///
+    /// Keeps `calibration`, `rotate180`, and the board and LED type already
+    /// detected: a reconnect reaches the same board, and clearing them would
+    /// drop `.pieceIdentity` (and possibly flip `.perSquareLEDs`) until the
+    /// first frames arrive again.
+    public mutating func resetFraming() {
+        buffer.removeAll()
+        frameAccumulator.removeAll()
+        rfidHistory.removeAll()
+        occupancyHistory.removeAll()
+        previousIdentity = nil
+        previousUnknownSquares = []
+        previousOccupancy = nil
+        lastVotedTags = nil
+        hasEmittedReady = false
+    }
+
     // MARK: - Frame scanner
 
     /// Scan the buffer for complete frames and process each one.

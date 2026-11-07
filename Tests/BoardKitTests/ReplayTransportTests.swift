@@ -340,3 +340,23 @@ private let g2Bytes = Data([
     #expect(!perStep[1].isEmpty)
     #expect(perStep[1].contains { if case .identitySnapshot = $0 { return true }; return false })
 }
+
+// MARK: - Scripted link drop (Fianchetto-b32.202)
+
+/// Gates: a scripted `.disconnected` resets the adapter, so a replay of a
+/// capture that dropped mid-frame decodes the reconnect the way a conforming
+/// transport would.
+/// Breaks if: ReplayTransport stops calling `resetFraming()` on a disconnect.
+/// User loses: nothing directly; capture replays of reconnects would show
+/// spliced frames that real transports never produce, hiding or inventing bugs.
+@Test func replayDisconnectResetsTheAdapter() {
+    let replay = ReplayTransport(adapter: ChessnutAdapter(), script: [
+        .bytes(g1Bytes.prefix(20)),
+        .lifecycle(.disconnected(error: nil)),
+        .lifecycle(.connected),
+        .bytes(g1Bytes),
+    ])
+    let afterReconnect = replay.runByStep()[3]
+    var fresh = ChessnutAdapter()
+    #expect("\(afterReconnect)" == "\(fresh.feed(bytes: g1Bytes))")
+}

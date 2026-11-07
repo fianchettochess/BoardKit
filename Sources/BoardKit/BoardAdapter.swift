@@ -159,6 +159,25 @@ public protocol BoardAdapter: Sendable {
     /// ## Default
     /// No-op, for boards that have no ``BoardCapabilities/gameArchive``.
     mutating func cancelStoredGameImport()
+
+    /// Discard everything tied to the link that just dropped: partial frames,
+    /// debounce or vote history, the previous board state used for deltas, and
+    /// queued responses. The next connection then decodes from a clean slate
+    /// and emits `.ready` again.
+    ///
+    /// **Transport contract:** call this when the link drops, before running
+    /// ``handshakeCommands(isReconnect:)`` with `isReconnect: true`. A
+    /// half-received frame from the old link would otherwise be spliced onto
+    /// the first frame of the new one.
+    ///
+    /// Configuration the host set or the board reported about itself survives
+    /// (for example Millennium's detected rotation, Certabo's calibration,
+    /// rotation and detected board and LED type), so capabilities do not
+    /// change across a reconnect.
+    ///
+    /// ## Default
+    /// No-op, for adapters that keep no state between calls.
+    mutating func resetFraming()
 }
 
 public extension BoardAdapter {
@@ -170,4 +189,7 @@ public extension BoardAdapter {
 
     /// Default: no stored-game download to abandon.
     mutating func cancelStoredGameImport() {}
+
+    /// Default: no per-link state to discard.
+    mutating func resetFraming() {}
 }

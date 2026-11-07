@@ -28,6 +28,8 @@ public protocol BoardAdapter: Sendable {
     // Default: empty. Ack-based protocols like ChessUp override it —
     // the transport must drain it after every feed(bytes:).
     mutating func takePendingResponses() -> [Data]
+    // Default: no-op. Call on every link drop, before the reconnect handshake.
+    mutating func resetFraming()
 }
 ```
 
@@ -80,6 +82,17 @@ BLE link drops. The transport MUST call this immediately after every
 writer used for normal commands. Draining is destructive: each queued response
 is returned exactly once.
 
+### `resetFraming()`
+
+Discards everything tied to the link that dropped: partial frames, vote or
+debounce history, the previous board state used for deltas, and queued
+responses. The transport calls it on every link drop, before
+`handshakeCommands(isReconnect: true)`, so a half-received frame is never
+spliced onto the new link's first frame, and the board's first state on the new
+link emits `.ready` again. Configuration survives: Millennium's detected
+rotation, and Certabo's calibration, rotation and detected board and LED type.
+Recreating the adapter instead is also correct, but loses that configuration.
+
 ```swift
 // Chessnut Air — first connect:
 // [(command: .startSession, delayBefore: 0)]
@@ -125,7 +138,8 @@ The transport's responsibility is:
    `adapter.handshakeCommands(isReconnect:)` with inter-command delays and the
    adapter's `minimumWriteInterval` floor, then let `adapter.feed()` emit
    `.ready` when the board ACKs.
-3. On link drop: yield `.disconnected(error:)`.
+3. On link drop: yield `.disconnected(error:)` and call
+   `adapter.resetFraming()` before the next connection's handshake.
 
 ```
 ┌─────────────┐  raw bytes  ┌──────────────┐  BoardEvent  ┌──────────────┐
