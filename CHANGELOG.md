@@ -16,6 +16,15 @@ Published tags are never moved or re-cut.
 
 ## [Unreleased]
 
+### Added
+
+- `ChessnutMoveAdapter.feed(bytes:from:)` keeps a framing buffer per notify
+  characteristic, so a fragmented 139-byte piece-status reply no longer
+  swallows board frames. `feed(bytes:)` is `feed(bytes:from: .boardState)`.
+  Both Chessnut adapters name their endpoints with the shared
+  `ChessnutNotificationEndpoint`; `ChessnutAdapter.NotificationEndpoint` is now
+  a typealias for it.
+
 ### Fixed
 
 - Both Chessnut framers trust a header only when its opcode is one the boards

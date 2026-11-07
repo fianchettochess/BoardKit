@@ -529,7 +529,9 @@ private let f4LEDBytes = Data([
     #expect(partial.isEmpty)
     adapter.resetFraming()
     let events = adapter.feed(bytes: f1MoveBytes)
-    #expect(firstIdentitySnapshot(from: events) != nil)
+    // The decoded board is F1 itself, not the stale partial spliced onto it.
+    var fresh = ChessnutMoveAdapter()
+    #expect(firstIdentitySnapshot(from: events) == firstIdentitySnapshot(from: fresh.feed(bytes: f1MoveBytes)))
     #expect(events.contains { if case .ready = $0 { return true }; return false })
     #expect(events.filter { if case .squareSensed = $0 { return true }; return false }.isEmpty,
             "No squareSensed deltas after resetFraming (clean first-frame path)")
@@ -874,4 +876,56 @@ private let f4LEDBytes = Data([
     for i in 2..<35 {
         #expect(encoded[i] == 0x00)
     }
+}
+
+// MARK: - Per-endpoint framing (Fianchetto-b32.157)
+
+/// Gates: a piece-status reply fragmented on the command-response
+/// characteristic and board frames on the board-state characteristic, arriving
+/// interleaved, both decode intact.
+/// Breaks if: the endpoints share one framing buffer again (the reply's
+/// `41 89` header then waits for 139 bytes and swallows the board frames).
+/// User loses: on a Move, asking for piece positions freezes the live board
+/// until the reply's byte count is made up, and the moves inside it vanish.
+@Test func moveEndpointsFrameIndependently() {
+    var start = [Piece?](repeating: nil, count: 64)
+    let board = Position.initial().board
+    for i in 0..<64 { start[i] = board[(i % 8) * 8 + i / 8] }
+    var afterE4 = start
+    afterE4[4 * 8 + 3] = afterE4[4 * 8 + 1]   // e2 → e4 (file-major)
+    afterE4[4 * 8 + 1] = nil
+
+    var reply = [UInt8](repeating: 0, count: 139)
+    reply[0] = 0x41; reply[1] = 0x89; reply[2] = 0x0B
+    for record in 0..<34 { reply[3 + record * 4] = UInt8(record % 12 + 1) }
+
+    func pieces(_ data: Data) -> [Data] {
+        stride(from: 0, to: data.count, by: 20).map { data.subdata(in: $0..<min($0 + 20, data.count)) }
+    }
+    let replyChunks = pieces(Data(reply))
+    let boardChunks = pieces(ChessnutMoveAdapter.encodeFrame(identity: start))
+        + pieces(ChessnutMoveAdapter.encodeFrame(identity: afterE4))
+
+    var adapter = ChessnutMoveAdapter()
+    var events: [BoardEvent] = []
+    for i in 0..<max(replyChunks.count, boardChunks.count) {
+        if i < replyChunks.count { events += adapter.feed(bytes: replyChunks[i], from: .commandResponse) }
+        if i < boardChunks.count { events += adapter.feed(bytes: boardChunks[i], from: .boardState) }
+    }
+
+    let raws = events.compactMap { event -> Data? in
+        if case .raw(let data) = event { return data }
+        return nil
+    }
+    #expect(raws == [Data(reply)])
+    let snapshots = events.compactMap { event -> [Piece?]? in
+        if case .identitySnapshot(let identity) = event { return identity }
+        return nil
+    }
+    #expect(snapshots == [start, afterE4])
+    let sensed = events.compactMap { event -> String? in
+        if case .squareSensed(let square, let isLift, _) = event { return "\(isLift ? "lift" : "place") \(square)" }
+        return nil
+    }
+    #expect(sensed == ["lift e2", "place e4"])
 }

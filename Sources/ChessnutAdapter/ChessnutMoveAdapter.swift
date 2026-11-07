@@ -155,8 +155,14 @@ public struct ChessnutMoveAdapter: BoardAdapter {
 
     // MARK: - State
 
-    /// Raw byte accumulator — holds bytes that arrived mid-frame.
-    private var buffer: [UInt8] = []
+    /// The Move's notify characteristics; the same type as
+    /// `ChessnutAdapter.NotificationEndpoint`.
+    public typealias NotificationEndpoint = ChessnutNotificationEndpoint
+
+    /// One accumulator per notify characteristic, holding bytes that arrived
+    /// mid-frame. A 139-byte piece-status reply fragmented on `commandResponse`
+    /// must not absorb board frames arriving on `boardState`.
+    private var buffers: [NotificationEndpoint: [UInt8]] = [:]
 
     /// Identity snapshot from the previous board frame.  Nil on startup /
     /// after `resetFraming()`.  Used to compute lift/place deltas.
@@ -183,12 +189,24 @@ public struct ChessnutMoveAdapter: BoardAdapter {
 
     // MARK: - feed
 
-    /// Decode raw BLE notification bytes and return semantic events.
+    /// Decode raw bytes from the board-state characteristic.
+    ///
+    /// Equivalent to `feed(bytes:from: .boardState)`. A transport that also
+    /// subscribes to the command-response characteristic must feed each
+    /// characteristic through `feed(bytes:from:)` instead.
+    public mutating func feed(bytes: Data) -> [BoardEvent] {
+        feed(bytes: bytes, from: .boardState)
+    }
+
+    /// Decode raw BLE notification bytes from one notify characteristic and
+    /// return semantic events.
     ///
     /// Frame format: `[opcode, payloadLength, payload…]`.
     /// Length rule: `real_size = buf[1] + 2` ([C-REF]), trusted only for an
     /// opcode the board sends with a length that opcode can have. Otherwise one
     /// byte is dropped and the stream rescanned; each dropped run is one `.raw`.
+    /// Each endpoint keeps its own partial frame; decoded state (identity
+    /// history) is shared.
     ///
     /// Dispatch table (notify channels):
     /// - `0x01` on 1b7e8262 → board-state → `identitySnapshot` + deltas + `.ready`
@@ -197,9 +215,12 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     ///   - `0x0B` piece-status → `.raw(data)` (no dedicated `BoardEvent` case yet)
     ///   - other → `.raw(data)`
     /// - bytes that cannot start a frame → one `.raw(bytes)` per run
-    public mutating func feed(bytes: Data) -> [BoardEvent] {
+    public mutating func feed(bytes: Data, from endpoint: NotificationEndpoint) -> [BoardEvent] {
+        var accumulator = buffers[endpoint] ?? []
+        let chunks = chessnutExtractFrames(appending: bytes, to: &accumulator)
+        buffers[endpoint] = accumulator
         var events: [BoardEvent] = []
-        for chunk in chessnutExtractFrames(appending: bytes, to: &buffer) {
+        for chunk in chunks {
             switch chunk {
             case .frame(let frame): events += processFrame(frame)
             case .discarded(let skipped): events.append(.raw(Data(skipped)))
@@ -265,15 +286,15 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// Call this when the BLE link drops and is about to be re-established,
     /// before `handshakeCommands(isReconnect: true)` runs.
     ///
-    /// - `buffer`: clears any mid-frame bytes.  The Move's 38-byte frames
-    ///   split across BLE's 23-byte default ATT MTU, making mid-frame
-    ///   disconnects realistic.
+    /// - every endpoint's buffer: clears any mid-frame bytes.  The Move's
+    ///   38-byte frames split across BLE's 23-byte default ATT MTU, making
+    ///   mid-frame disconnects realistic.
     /// - `previousIdentity`: cleared so the next frame re-triggers `.ready`
     ///   and produces no spurious lift/place deltas.
     /// - `currentIdentity`: cleared so `encode(.executeMove)` does not act
     ///   on a stale position from before the disconnect.
     public mutating func resetFraming() {
-        buffer          = []
+        buffers.removeAll()
         previousIdentity = nil
         currentIdentity  = nil
     }

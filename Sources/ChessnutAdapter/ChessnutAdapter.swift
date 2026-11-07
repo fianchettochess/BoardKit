@@ -160,12 +160,9 @@ public struct ChessnutAdapter: BoardAdapter {
     private var buffer: [UInt8] = []
 
     /// Independent BLE notification streams can split frames at different
-    /// boundaries. Their bytes must never share a framing accumulator.
-    public enum NotificationEndpoint: Hashable, Sendable {
-        case boardState
-        case commandResponse
-        case file
-    }
+    /// boundaries. Their bytes must never share a framing accumulator. Shared
+    /// with `ChessnutMoveAdapter`, so one transport routes both profiles.
+    public typealias NotificationEndpoint = ChessnutNotificationEndpoint
 
     private var notificationBuffers: [NotificationEndpoint: [UInt8]] = [:]
 

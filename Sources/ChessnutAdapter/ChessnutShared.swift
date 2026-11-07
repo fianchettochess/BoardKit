@@ -187,6 +187,22 @@ func chessnutDeltaEvents(prev: [Piece?], curr: [Piece?]) -> [BoardEvent] {
     return lifts + places
 }
 
+// MARK: - Notification endpoints
+
+/// The Chessnut notify characteristics. Both profiles share every GATT UUID,
+/// and each characteristic splits frames at its own boundaries, so its bytes
+/// must never share a framing accumulator with another's.
+///
+/// - `boardState`: `ChessnutGATT.boardStateChar` (`…8262`).
+/// - `commandResponse`: `ChessnutGATT.commandResponseChar` (`…8273`); on the
+///   Move this carries the `0x41` battery and 139-byte piece-status replies.
+/// - `file`: `ChessnutGATT.fileChar` (`…8283`), stored-game frames.
+public enum ChessnutNotificationEndpoint: Hashable, Sendable {
+    case boardState
+    case commandResponse
+    case file
+}
+
 // MARK: - Frame extraction (both profiles, every notification endpoint)
 //
 // Wire format: `[opcode, payloadLength, payload…]`, no checksum. [C-REF]
