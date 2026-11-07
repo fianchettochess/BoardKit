@@ -14,40 +14,40 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
-## [Unreleased]
+## [0.18.0] — 2026-11-07
+
+Breaking only for a `BoardAdapter` conformer outside BoardKit whose own
+`resetFraming()` is not public; see Changed.
 
 ### Added
 
-- `ChessnutMoveAdapter.feed(bytes:from:)` keeps a framing buffer per notify
-  characteristic, so a fragmented 139-byte piece-status reply no longer
-  swallows board frames. `feed(bytes:)` is `feed(bytes:from: .boardState)`.
-  Both Chessnut adapters name their endpoints with the shared
-  `ChessnutNotificationEndpoint`; `ChessnutAdapter.NotificationEndpoint` is now
-  a typealias for it.
-- `BoardAdapter.resetFraming()` is a protocol requirement with a no-op default.
-  Transports call it on every link drop, before the reconnect handshake.
-  `SquareOffAdapter` and `CertaboAdapter` implement it (Certabo keeps its
-  calibration, rotation and detected board and LED type); the Chessnut,
-  Pegasus, Millennium and ChessUp implementations now satisfy the requirement,
-  so a generic transport reaches them. `ReplayTransport` resets its adapter on
-  a scripted `.disconnected`.
+- `ChessnutNotificationEndpoint` names the Chessnut notify characteristics
+  (`boardState`, `commandResponse`, `file`) for both adapters.
+  `ChessnutAdapter.NotificationEndpoint` is now a typealias for it, so
+  `String(describing:)` of the type reads `ChessnutNotificationEndpoint`.
+- `ChessnutMoveAdapter.feed(bytes:from:)` and
+  `ChessnutMoveAdapter.NotificationEndpoint`.
+- `SquareOffAdapter.resetFraming()` and `CertaboAdapter.resetFraming()`.
+  Certabo keeps its calibration, rotation and detected board and LED type.
 - `CertaboCalibration` is `Codable` and `Equatable`. The stored form is
   versioned JSON (`persistedFormatVersion` 1: tags as five bytes, pieces as FEN
   letters) and does not depend on ChessCore's `Piece` coding; decoding refuses
   an unknown version, a malformed entry or a duplicated tag. `entries` lists
-  every learned tag in tag-byte order.
-- `CertaboCalibration.learnReporting(from:standardStart:)` returns the
-  calibration with the tags it could not use: `collisions` (one tag voted on
-  several squares) and `unusableSquares` (tags with three or more zero bytes).
-- `SquareToggleMonitor`: per-square toggle counts over a caller-supplied
-  clock, the time-dependent part of a flicker filter for occupancy-only
-  boards. `isFlickering` / `flickeringSquares` flag a square toggling
-  `flickerToggles` times (default 4) within `window` (default 1 s);
+  every learned tag (`CertaboCalibration.Entry`) in tag-byte order.
+- `CertaboCalibration.learnReporting(from:standardStart:)` returns a
+  `LearnReport`: the calibration with the tags it could not use, `collisions`
+  (`TagCollision`: one tag voted on several squares) and `unusableSquares`
+  (tags with three or more zero bytes), and `isClean`.
+- `SquareToggleMonitor` (with `Thresholds`): per-square toggle counts over a
+  caller-supplied clock, the time-dependent part of a flicker filter for
+  occupancy-only boards. `isFlickering` / `flickeringSquares` flag a square
+  toggling `flickerToggles` times (default 4) within `window` (default 1 s);
   `isSettled(_:for:at:)` says a destination has been quiet long enough to
   commit; `totalToggles` feeds an "unreliable square" notice. Pure value, no
   `Date`; `BoardEvent` is unchanged.
 - Test support: `ChaosPatternID.ghostNeighbor` and `.coalescedCapture`, the
-  `ChaosProfile.identityNoise` preset (CLI `identitynoise`),
+  `ChaosProfile.identityNoise` preset (CLI `identitynoise`) with its
+  `ghostNeighborProbability` and `coalescedCaptureProbability`,
   `ChaosMoveEvent.sameScanAsPrevious` and
   `ChaosMoveContext.alternateDestinations`. New `ChaosProfile` init parameters
   default to zero, and the existing presets draw exactly the streams they did.
@@ -57,19 +57,50 @@ Published tags are never moved or re-cut.
 
 ### Changed
 
-- `CertaboCalibration.learn(from:standardStart:)` leaves out a tag voted on
-  squares expecting different pieces, instead of keeping whichever came last,
-  and leaves out tags that can never identify a piece. A noisy read during
-  calibration now reads as unknown rather than as the wrong piece.
-
-### Fixed
-
 - Both Chessnut framers trust a header only when its opcode is one the boards
   send and its length fits that opcode; anything else drops one byte and
   rescans. A corrupt byte no longer misaligns every later frame until
   reconnect, and the framing buffer stays shorter than the longest real frame
-  (139 bytes). Skipped bytes still arrive as one `.raw` per run. Unknown
-  opcodes are no longer framed by their length byte.
+  (139 bytes). Skipped bytes still arrive as one `.raw` per run.
+  - Unknown opcodes are no longer framed by their length byte, and `0x41`
+    frames other than the Move's battery (`41 03 0C`) and piece-status
+    (`41 89 0B`) replies are skipped rather than passed on as `.raw` frames.
+  - Board-state frames are accepted from 34 to 42 bytes. The upper bound is a
+    deliberate narrowing of the earlier "34 bytes or more" with no reference
+    or capture behind it: a board model that sends a longer board frame now
+    decodes nothing.
+  - The owner's Chessnut Go capture decodes exactly as in 0.17.1.
+- `ChessnutMoveAdapter` keeps a framing buffer per notify characteristic when
+  fed through `feed(bytes:from:)`, so a fragmented 139-byte piece-status reply
+  no longer swallows board frames. `feed(bytes:)` is
+  `feed(bytes:from: .boardState)`: one buffer, as before, until a transport
+  routes each characteristic through `feed(bytes:from:)`.
+- `CertaboCalibration.learn(from:standardStart:)` leaves out a tag voted on
+  squares expecting different pieces, instead of keeping whichever came last,
+  and leaves out tags that can never identify a piece. A noisy read during
+  calibration now reads as unknown rather than as the wrong piece.
+- `BoardAdapter.resetFraming()` is a protocol requirement with a no-op default,
+  so a generic transport reaches each adapter's own reset. Transports call it on
+  every link drop, before the reconnect handshake; the Chessnut, Pegasus,
+  Millennium and ChessUp implementations now satisfy the requirement.
+  `ReplayTransport` resets its adapter on a scripted `.disconnected`, so a
+  replay script that disconnects mid-frame now decodes differently.
+  - An external conformer that declares its own `resetFraming()` must make it
+    as visible as the type (`public` on a public type), or it no longer
+    compiles.
+
+## [0.17.1] — 2026-11-05
+
+### Fixed
+
+- `BoardDiffResolver` offers only histories in which every move leaves a
+  changed square and lands on a changed square or captures. A history that
+  wanders off the physical change is no longer offered, and no longer uses up
+  the match limit ahead of a credible one. A `maxDepth` or `limit` of zero
+  returns nothing.
+- `OccupancyMoveInference` keeps both earlier origins when a third piece is
+  lifted during a capture, instead of overwriting the second lift, and does not
+  read such a sequence as castling.
 
 ## [0.17.0] — 2026-11-02
 
@@ -467,6 +498,8 @@ Chessnut Air family and Move, DGT Pegasus, Millennium, Certabo, ChessUp), the
 `ReplayTransport` / `SimulatedBoard` test harness, and the `boardkit-emulator`
 BLE peripheral with per-board personalities and a chaos engine.
 
+[0.18.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.18.0
+[0.17.1]: https://github.com/fianchettochess/BoardKit/releases/tag/0.17.1
 [0.17.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.17.0
 [0.16.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.16.0
 [0.15.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.15.0
