@@ -296,14 +296,20 @@ public struct ChessnutAdapter: BoardAdapter {
     /// CRC, no multi-packet reassembly.
     /// [C-REF]: `real_size = buf[1] + 2`, dispatch on `buf[0]`.
     ///
+    /// A header is trusted only when its opcode is one the board sends and its
+    /// length fits that opcode; otherwise one byte is dropped and the stream is
+    /// rescanned, so a corrupt byte costs at most the frame it lands in. Each
+    /// run of dropped bytes is surfaced as one `.raw`.
+    ///
     /// Dispatch table:
     /// - `0x01` → board-state frame → `identitySnapshot` + `squareSensed` deltas
     /// - `0x2A` → battery response → `battery(percent:)`
     /// - `0x27` → BLE/MCU version → `raw(data)`
     /// - `0x37` → file-transfer flags → `raw(data)`
-    /// - everything else → `raw(data)` for debug logging
+    /// - other accepted opcodes (`0x21`, `0x23`, `0x41`) → `raw(data)`
+    /// - bytes that cannot start a frame → one `raw(bytes)` per run
     public mutating func feed(bytes: Data) -> [BoardEvent] {
-        processFrames(Self.extractFrames(bytes: bytes, buffer: &buffer), from: nil)
+        processFrames(chessnutExtractFrames(appending: bytes, to: &buffer), from: nil)
     }
 
     /// Feed one notification endpoint, retaining its partial frame separately
@@ -312,28 +318,21 @@ public struct ChessnutAdapter: BoardAdapter {
     /// the legacy overload retains its own single-stream accumulator.
     public mutating func feed(bytes: Data, from endpoint: NotificationEndpoint) -> [BoardEvent] {
         var accumulator = notificationBuffers[endpoint] ?? []
-        let frames = Self.extractFrames(bytes: bytes, buffer: &accumulator)
+        let frames = chessnutExtractFrames(appending: bytes, to: &accumulator)
         notificationBuffers[endpoint] = accumulator
         return processFrames(frames, from: endpoint)
     }
 
-    private static func extractFrames(bytes: Data, buffer: inout [UInt8]) -> [[UInt8]] {
-        buffer.append(contentsOf: bytes)
-        var frames: [[UInt8]] = []
-        while buffer.count >= 2 {
-            let payloadLen = Int(buffer[1])
-            let frameLen = payloadLen + 2
-            guard buffer.count >= frameLen else { break }
-            let frame = Array(buffer.prefix(frameLen))
-            buffer.removeFirst(frameLen)
-            frames.append(frame)
-        }
-        return frames
-    }
-
-    private mutating func processFrames(_ frames: [[UInt8]], from endpoint: NotificationEndpoint?) -> [BoardEvent] {
+    /// Bytes that could not start a frame are surfaced as one `.raw` per run,
+    /// in wire order, so they can still be logged.
+    private mutating func processFrames(_ chunks: [ChessnutFramedChunk], from endpoint: NotificationEndpoint?) -> [BoardEvent] {
         var events: [BoardEvent] = []
-        for frame in frames { events += processFrame(frame, from: endpoint) }
+        for chunk in chunks {
+            switch chunk {
+            case .frame(let frame): events += processFrame(frame, from: endpoint)
+            case .discarded(let bytes): events.append(.raw(Data(bytes)))
+            }
+        }
         return events
     }
 

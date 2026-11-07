@@ -186,3 +186,99 @@ func chessnutDeltaEvents(prev: [Piece?], curr: [Piece?]) -> [BoardEvent] {
     }
     return lifts + places
 }
+
+// MARK: - Frame extraction (both profiles, every notification endpoint)
+//
+// Wire format: `[opcode, payloadLength, payload…]`, no checksum. [C-REF]
+// `real_size = buf[1] + 2`. Trusting `buf[1]` for any opcode let one junk byte
+// misalign every later frame until reconnect (Fianchetto-b32.158), so a header
+// is accepted only when its opcode is one the boards send and its length is
+// one that opcode can have. Anything else drops ONE byte and rescans, the same
+// resync rule PegasusAdapter uses. Dropped bytes are handed back so the
+// adapter can still surface them as `.raw` for debug logging.
+
+/// One item produced by `chessnutExtractFrames`, in wire order.
+enum ChessnutFramedChunk: Equatable {
+    /// A complete frame with an accepted header.
+    case frame([UInt8])
+    /// A run of consecutive bytes that could not start a frame.
+    case discarded([UInt8])
+}
+
+/// The longest frame either profile accepts: the Move's 139-byte piece-status
+/// reply (`41 89 0B` + 34 × 4). Because every accepted header is bounded by
+/// this, the framing buffer never holds more than `chessnutMaxFrameLength - 1`
+/// bytes between calls.
+let chessnutMaxFrameLength = 2 + 0x89
+
+/// Whether `[opcode, payloadLength]` (and, for `0x41`, the sub-opcode once it
+/// has arrived) can begin a frame a Chessnut board sends.
+///
+/// - `0x01` board state: classic `0x22`, Move `0x24`. Both adapters accept any
+///   frame of ≥ 34 bytes and the Move tail is unverified, so the length is a
+///   range with headroom rather than an exact value; it still rejects a length
+///   that would swallow the next frame.
+/// - `0x21` / `0x23`: the one-byte mode echo and heartbeat classic boards emit.
+/// - `0x27`: BLE/MCU version text, length undocumented; bounded generously.
+/// - `0x2A` battery: `2A 02 <level|charging> 00`.
+/// - `0x32` file count, `0x37` file flag: one byte each.
+/// - `0x41` Move extended reply: battery `41 03 0C`, piece status `41 89 0B`;
+///   other sub-opcodes are passed through when the length fits the range.
+func chessnutAcceptsHeader(opcode: UInt8, payloadLength: Int, subOpcode: UInt8?) -> Bool {
+    switch opcode {
+    case 0x01: return (32...40).contains(payloadLength)
+    case 0x21, 0x23: return payloadLength == 1
+    case 0x27: return (1...32).contains(payloadLength)
+    case 0x2A: return payloadLength == 2
+    case 0x32, 0x37: return payloadLength == 1
+    case 0x41:
+        switch subOpcode {
+        case 0x0C: return payloadLength == 3
+        case 0x0B: return payloadLength == 0x89
+        default: return (1...0x89).contains(payloadLength)
+        }
+    default: return false
+    }
+}
+
+/// Append `bytes` to `buffer` and cut every complete frame it now holds.
+///
+/// A header that is valid but still waiting for payload bytes stays buffered;
+/// only an unknown opcode or an impossible length is skipped, one byte at a
+/// time. Consecutive skipped bytes are coalesced into one `.discarded` chunk.
+func chessnutExtractFrames(appending bytes: Data, to buffer: inout [UInt8]) -> [ChessnutFramedChunk] {
+    buffer.append(contentsOf: bytes)
+    var chunks: [ChessnutFramedChunk] = []
+    var skipped: [UInt8] = []
+    var start = 0
+    while start < buffer.count {
+        let opcode = buffer[start]
+        guard start + 1 < buffer.count else {
+            // A lone byte: wait if it can start a frame, otherwise skip it now.
+            if chessnutIsKnownOpcode(opcode) { break }
+            skipped.append(opcode); start += 1
+            continue
+        }
+        let payloadLength = Int(buffer[start + 1])
+        let subOpcode: UInt8? = start + 2 < buffer.count ? buffer[start + 2] : nil
+        guard chessnutAcceptsHeader(opcode: opcode, payloadLength: payloadLength, subOpcode: subOpcode) else {
+            skipped.append(opcode); start += 1
+            continue
+        }
+        let frameLength = payloadLength + 2
+        guard buffer.count - start >= frameLength else { break }
+        if !skipped.isEmpty { chunks.append(.discarded(skipped)); skipped = [] }
+        chunks.append(.frame(Array(buffer[start..<(start + frameLength)])))
+        start += frameLength
+    }
+    if !skipped.isEmpty { chunks.append(.discarded(skipped)) }
+    buffer.removeFirst(start)
+    return chunks
+}
+
+private func chessnutIsKnownOpcode(_ opcode: UInt8) -> Bool {
+    switch opcode {
+    case 0x01, 0x21, 0x23, 0x27, 0x2A, 0x32, 0x37, 0x41: return true
+    default: return false
+    }
+}

@@ -14,6 +14,17 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [Unreleased]
+
+### Fixed
+
+- Both Chessnut framers trust a header only when its opcode is one the boards
+  send and its length fits that opcode; anything else drops one byte and
+  rescans. A corrupt byte no longer misaligns every later frame until
+  reconnect, and the framing buffer stays shorter than the longest real frame
+  (139 bytes). Skipped bytes still arrive as one `.raw` per run. Unknown
+  opcodes are no longer framed by their length byte.
+
 ## [0.17.0] — 2026-11-02
 
 ### Changed

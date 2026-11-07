@@ -186,7 +186,9 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// Decode raw BLE notification bytes and return semantic events.
     ///
     /// Frame format: `[opcode, payloadLength, payload…]`.
-    /// Length rule: `real_size = buf[1] + 2` ([C-REF]).
+    /// Length rule: `real_size = buf[1] + 2` ([C-REF]), trusted only for an
+    /// opcode the board sends with a length that opcode can have. Otherwise one
+    /// byte is dropped and the stream rescanned; each dropped run is one `.raw`.
     ///
     /// Dispatch table (notify channels):
     /// - `0x01` on 1b7e8262 → board-state → `identitySnapshot` + deltas + `.ready`
@@ -194,17 +196,14 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     ///   - `0x0C` battery → `.battery(percent:)`
     ///   - `0x0B` piece-status → `.raw(data)` (no dedicated `BoardEvent` case yet)
     ///   - other → `.raw(data)`
-    /// - anything else → `.raw(data)`
+    /// - bytes that cannot start a frame → one `.raw(bytes)` per run
     public mutating func feed(bytes: Data) -> [BoardEvent] {
-        buffer.append(contentsOf: bytes)
         var events: [BoardEvent] = []
-        while buffer.count >= 2 {
-            let payloadLen = Int(buffer[1])
-            let frameLen   = payloadLen + 2
-            guard buffer.count >= frameLen else { break }
-            let frame = Array(buffer.prefix(frameLen))
-            buffer.removeFirst(frameLen)
-            events += processFrame(frame)
+        for chunk in chessnutExtractFrames(appending: bytes, to: &buffer) {
+            switch chunk {
+            case .frame(let frame): events += processFrame(frame)
+            case .discarded(let skipped): events.append(.raw(Data(skipped)))
+            }
         }
         return events
     }
