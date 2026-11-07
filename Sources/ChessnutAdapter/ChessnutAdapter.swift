@@ -511,6 +511,10 @@ public struct ChessnutAdapter: BoardAdapter {
     /// frame. [SWIFT-REF] and [C-REF] both accept ≥34 via `real_size =
     /// buf[1] + 2`. We follow the REFERENCE implementations — they were
     /// written against real hardware.
+    ///
+    /// The framer narrows "≥ 34" to 34–42 bytes (payload length 32–40), a
+    /// deliberate bound with no source behind it (see `chessnutAcceptsHeader`),
+    /// so a longer board frame never reaches this decoder.
     private mutating func processBoardStateFrame(_ frame: [UInt8]) -> [BoardEvent] {
         guard frame[0] == Opcode.boardState, frame.count >= 34 else {
             return [.raw(Data(frame))]

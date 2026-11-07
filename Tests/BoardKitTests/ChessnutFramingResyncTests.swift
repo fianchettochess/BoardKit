@@ -113,3 +113,133 @@ private func corruptHeaderRecoversWithinOneFrame(_ c: ResyncCase) {
     }
     #expect(largest < chessnutMaxFrameLength)
 }
+
+// MARK: - Live frames behind a resync
+
+/// `startIdentity()` with each listed move made, so every board frame in a
+/// stream is distinct and a lost one shows.
+private func identity(after moves: [(String, String)]) -> [Piece?] {
+    var identity = startIdentity()
+    for (from, to) in moves {
+        let source = Square(algebraic: from)!, target = Square(algebraic: to)!
+        identity[target.file * 8 + target.rank] = identity[source.file * 8 + source.rank]
+        identity[source.file * 8 + source.rank] = nil
+    }
+    return identity
+}
+
+private let liveIdentities: [[Piece?]] = [
+    identity(after: []),
+    identity(after: [("e2", "e4")]),
+    identity(after: [("e2", "e4"), ("e7", "e5")]),
+    identity(after: [("e2", "e4"), ("e7", "e5"), ("g1", "f3")]),
+]
+
+/// Bytes the framer must skip without latching onto the live frames behind
+/// them. All arrive on the one `feed(bytes:)` buffer every face uses.
+private enum StrayFrame: String, CaseIterable, Sendable {
+    /// An opcode no table lists, whose payload reads as `41 22`: a `0x41`
+    /// header claiming 34 bytes, exactly one classic board frame.
+    case unrecognisedOpcode
+    /// Version text longer than the `0x27` bound, containing `Ai` (`41 69`),
+    /// that a resync walks through byte by byte.
+    case longVersionText
+    /// A board-state frame longer than the accepted 42 bytes (payload 0x2A).
+    case longBoardFrame
+
+    func bytes(_ profile: Profile) -> Data {
+        switch self {
+        case .unrecognisedOpcode:
+            return Data([0x2B, 0x02, 0x41, 0x22])
+        case .longVersionText:
+            let text = Array("Chessnut Air BLE V1.3 MCU Ai Go/Pro mk0X".utf8)
+            precondition(text.count == 40)
+            return Data([0x27, UInt8(text.count)] + text)
+        case .longBoardFrame:
+            let frame = profile.frame(liveIdentities[0])
+            return Data([0x01, 0x2A]) + frame.dropFirst(2).prefix(32) + Data(repeating: 0, count: 10)
+        }
+    }
+}
+
+private enum Delivery: String, CaseIterable, Sendable {
+    /// One `feed(bytes:)` per frame.
+    case wholeFrame
+    /// Every frame cut into 20-byte notifications.
+    case twentyByteChunks
+
+    func chunks(_ frames: [Data]) -> [Data] {
+        switch self {
+        case .wholeFrame: return frames
+        case .twentyByteChunks:
+            return frames.flatMap { data in
+                stride(from: 0, to: data.count, by: 20).map {
+                    data.subdata(in: (data.startIndex + $0)..<(data.startIndex + min($0 + 20, data.count)))
+                }
+            }
+        }
+    }
+}
+
+private struct StrayCase: Sendable, CustomTestStringConvertible {
+    let profile: Profile
+    let stray: StrayFrame
+    let delivery: Delivery
+    var testDescription: String { "\(profile.rawValue), \(stray.rawValue), \(delivery.rawValue)" }
+}
+
+private let strayCases = Profile.allCases.flatMap { profile in
+    StrayFrame.allCases.flatMap { stray in
+        Delivery.allCases.map { StrayCase(profile: profile, stray: stray, delivery: $0) }
+    }
+}
+
+/// Gates: a frame the framer cannot use costs only itself; every live board
+/// frame before and after it decodes, in order.
+/// Breaks if: the `0x41` header accepts a length or sub-opcode the Move never
+/// sends (a resync then latches onto `41 22` or the `A` in version text and
+/// swallows up to 139 bytes of live frames), or a header with no sub-opcode
+/// yet waits for a length that cannot be a `0x41` reply. The long board frame
+/// pins the deliberate 42-byte bound: widening it is a decision for a
+/// capture, and this case changes with it.
+/// User loses: moves made right after a stray notification never reach the
+/// app, or a board model with a longer frame silently stalls.
+@Test(arguments: strayCases)
+private func strayFrameCostsOnlyItself(_ c: StrayCase) {
+    let frames = [c.profile.frame(liveIdentities[0]), c.stray.bytes(c.profile)]
+        + liveIdentities.dropFirst().map(c.profile.frame)
+    let events = c.profile.feed(c.delivery.chunks(frames))
+    let snapshots = events.compactMap { event -> [Piece?]? in
+        if case .identitySnapshot(let id) = event { return id }
+        return nil
+    }
+    #expect(snapshots == liveIdentities)
+}
+
+/// Gates: a `0x41` header whose sub-opcode has not arrived waits only for the
+/// two lengths the Move sends, and a split battery reply still frames whole.
+/// Breaks if: the framer rejects a valid `41 03` header before its
+/// sub-opcode arrives, or holds a `41` header of any other length.
+/// User loses: a Move's battery reply split across notifications is dropped,
+/// or stray bytes are held back until more arrive.
+@Test func extendedHeaderWaitsOnlyForMoveShapes() {
+    var buffer: [UInt8] = []
+    #expect(chessnutExtractFrames(appending: Data([0x41, 0x03]), to: &buffer).isEmpty)
+    #expect(chessnutExtractFrames(appending: Data([0x0C, 0x00, 0x55]), to: &buffer)
+        == [.frame([0x41, 0x03, 0x0C, 0x00, 0x55])])
+    #expect(buffer.isEmpty)
+
+    #expect(chessnutExtractFrames(appending: Data([0x41, 0x89]), to: &buffer).isEmpty)
+    #expect(buffer == [0x41, 0x89])
+    buffer = []
+
+    #expect(chessnutExtractFrames(appending: Data([0x41, 0x22]), to: &buffer) == [.discarded([0x41, 0x22])])
+    #expect(buffer.isEmpty)
+
+    // A sub-opcode that has arrived must match its length.
+    #expect(chessnutExtractFrames(appending: Data([0x41, 0x03, 0x0B]), to: &buffer)
+        == [.discarded([0x41, 0x03, 0x0B])])
+    #expect(chessnutExtractFrames(appending: Data([0x41, 0x89, 0x0C]), to: &buffer)
+        == [.discarded([0x41, 0x89, 0x0C])])
+    #expect(buffer.isEmpty)
+}

@@ -213,7 +213,8 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// - `0x41` on 1b7e8273 → extended response → dispatch on sub-opcode:
     ///   - `0x0C` battery → `.battery(percent:)`
     ///   - `0x0B` piece-status → `.raw(data)` (no dedicated `BoardEvent` case yet)
-    ///   - other → `.raw(data)`
+    ///   - no other sub-opcode is framed: its bytes are skipped like any
+    ///     unknown header
     /// - bytes that cannot start a frame → one `.raw(bytes)` per run
     public mutating func feed(bytes: Data, from endpoint: NotificationEndpoint) -> [BoardEvent] {
         var accumulator = buffers[endpoint] ?? []
@@ -413,10 +414,12 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// Acceptance rule (spec §4, D4):
     ///   `byte[0] == 0x01` AND `length >= 34`
     ///
-    /// Tolerates any `byte[1]` value ≥ 32 — the header byte is validated as
-    /// the start-of-frame opcode, not as a fixed payload-size sentinel, per
-    /// the `real_size = buf[1]+2` rule and D4 ruling.  Logs-and-tolerates
-    /// `byte[1] != 0x24`; do not hard-assert 0x24 before hardware capture.
+    /// Tolerates any `byte[1]` value from 32 to 40 — the header byte is
+    /// validated as the start-of-frame opcode, not as a fixed payload-size
+    /// sentinel, per the `real_size = buf[1]+2` rule and D4 ruling.
+    /// Logs-and-tolerates `byte[1] != 0x24`; do not hard-assert 0x24 before
+    /// hardware capture. The framer's upper bound of 40 is a deliberate,
+    /// unsourced narrowing of "≥ 34" (see `chessnutAcceptsHeader`).
     ///
     /// The 4-byte tail (bytes[34..37]) is treated as opaque. [RISK §b]
     private mutating func processBoardStateFrame(_ frame: [UInt8]) -> [BoardEvent] {
@@ -467,7 +470,9 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     ///   - [RISK §g]: MTU — will be fragmented at ATT MTU 23; a length-based
     ///     reassembler is advisable before parsing.
     ///
-    /// **All other sub-opcodes**: emitted as `.raw(data)`.
+    /// **All other sub-opcodes**: emitted as `.raw(data)`. The framer accepts
+    /// only the two shapes above, so this is reached only by a frame built
+    /// outside it.
     private func processExtendedFrame(_ frame: [UInt8]) -> [BoardEvent] {
         guard frame.count >= 3 else { return [.raw(Data(frame))] }
         switch frame[2] {

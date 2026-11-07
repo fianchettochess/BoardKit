@@ -230,16 +230,28 @@ let chessnutMaxFrameLength = 2 + 0x89
 /// Whether `[opcode, payloadLength]` (and, for `0x41`, the sub-opcode once it
 /// has arrived) can begin a frame a Chessnut board sends.
 ///
-/// - `0x01` board state: classic `0x22`, Move `0x24`. Both adapters accept any
-///   frame of ≥ 34 bytes and the Move tail is unverified, so the length is a
-///   range with headroom rather than an exact value; it still rejects a length
-///   that would swallow the next frame.
-/// - `0x21` / `0x23`: the one-byte mode echo and heartbeat classic boards emit.
-/// - `0x27`: BLE/MCU version text, length undocumented; bounded generously.
+/// - `0x01` board state: classic `0x22` ([OFFICIAL-DOC], [C-REF]), Move `0x24`
+///   ([SWIFT-REF]). A Chessnut Go, which runs the classic profile, sends
+///   `0x24` too (the owner's capture, 2026-10-29), so both profiles accept
+///   the same range. The adapters decode any frame of ≥ 34 bytes, so the
+///   lower bound 32 matches them. The upper bound 40 (frames of up to 42
+///   bytes) is a deliberate narrowing with no source behind it: no reference
+///   or capture shows a longer board frame, and an unbounded length would
+///   swallow the frames behind a corrupt header. A board that sends a longer
+///   one decodes nothing until this is widened.
+/// - `0x21` / `0x23`: the one-byte mode echo and heartbeat classic boards emit
+///   (the Go capture holds `23 01 00`). Both can still false-latch on text
+///   just before a board frame (`21 01` / `23 01`); that costs one frame at
+///   most, because the latch is three bytes long.
+/// - `0x27`: BLE/MCU version text. Its length is undocumented and unsourced;
+///   32 is a generous guess.
 /// - `0x2A` battery: `2A 02 <level|charging> 00`.
 /// - `0x32` file count, `0x37` file flag: one byte each.
-/// - `0x41` Move extended reply: battery `41 03 0C`, piece status `41 89 0B`;
-///   other sub-opcodes are passed through when the length fits the range.
+/// - `0x41` Move extended reply: only the two shapes the Move sends, battery
+///   `41 03 0C` and piece status `41 89 0B`. Until the sub-opcode arrives the
+///   header waits only when its length is one of those two; any other `41`
+///   is rejected at once. A looser rule let a resync latch onto an `A` (0x41)
+///   in version text or piece bytes and swallow the live frames behind it.
 func chessnutAcceptsHeader(opcode: UInt8, payloadLength: Int, subOpcode: UInt8?) -> Bool {
     switch opcode {
     case 0x01: return (32...40).contains(payloadLength)
@@ -248,14 +260,19 @@ func chessnutAcceptsHeader(opcode: UInt8, payloadLength: Int, subOpcode: UInt8?)
     case 0x2A: return payloadLength == 2
     case 0x32, 0x37: return payloadLength == 1
     case 0x41:
-        switch subOpcode {
-        case 0x0C: return payloadLength == 3
-        case 0x0B: return payloadLength == 0x89
-        default: return (1...0x89).contains(payloadLength)
+        return chessnutExtendedReplyShapes.contains { shape in
+            shape.payloadLength == payloadLength && (subOpcode ?? shape.subOpcode) == shape.subOpcode
         }
     default: return false
     }
 }
+
+/// The `0x41` replies the Move sends: battery `41 03 0C`, piece status
+/// `41 89 0B`.
+private let chessnutExtendedReplyShapes: [(subOpcode: UInt8, payloadLength: Int)] = [
+    (0x0C, 3),
+    (0x0B, 0x89),
+]
 
 /// Append `bytes` to `buffer` and cut every complete frame it now holds.
 ///
