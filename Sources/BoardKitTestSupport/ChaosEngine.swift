@@ -39,6 +39,12 @@ import BoardKit
 //   design: hand off to the snapshot/desync flow) and the inference may
 //   resolve a different-but-legal move or defer to the resolver class —
 //   the survival corpus classifies and asserts that distribution.
+//
+// - **Identity-board** (`.identityNoise` adds these): ghostNeighbor and
+//   coalescedCapture reproduce the Chessnut Go failures behind 0.12.x. They
+//   are meant to run through a personality and the real adapter
+//   (`feed(bytes:)`), whose identity deltas and `BoardIdentityCheck` are what
+//   must absorb them; occupancy-only inference alone cannot.
 
 // MARK: - Perturbed event
 
@@ -55,12 +61,18 @@ public struct ChaosMoveEvent: Equatable, Sendable {
     public var piece: Piece?
     /// Pause before this event fires, in milliseconds.
     public var delayBeforeMs: Int
+    /// The board's sensor scan saw this event together with the one before
+    /// it: a full-state board reports both in one frame (see
+    /// `BoardPersonality.coalescedFrames(for:)`). Per-event consumers ignore it.
+    public var sameScanAsPrevious: Bool
 
-    public init(square: String, isLift: Bool, piece: Piece? = nil, delayBeforeMs: Int = 0) {
+    public init(square: String, isLift: Bool, piece: Piece? = nil, delayBeforeMs: Int = 0,
+                sameScanAsPrevious: Bool = false) {
         self.square = square
         self.isLift = isLift
         self.piece = piece
         self.delayBeforeMs = delayBeforeMs
+        self.sameScanAsPrevious = sameScanAsPrevious
     }
 
     public var delayBefore: TimeInterval { Double(delayBeforeMs) / 1000.0 }
@@ -100,6 +112,15 @@ public enum ChaosPatternID: String, CaseIterable, Sendable {
     case promotionNoSwap
     /// A long stall in the middle of the move (phone rang, thinking).
     case midMoveStall
+    /// While the mover is in hand, an empty square it could legally reach
+    /// reads a phantom piece for one scan, then empty again (the Chessnut Go's
+    /// flickering d2 with the c1 bishop in hand). Identity boards must reject
+    /// it; occupancy alone completes the wrong move.
+    case ghostNeighbor
+    /// The whole capture happens between two sensor scans, so a full-state
+    /// board reports the destination going straight from the captured piece
+    /// to the capturer in one frame (the Chessnut Go's ...Kxa1).
+    case coalescedCapture
 }
 
 // MARK: - Profile
@@ -135,6 +156,10 @@ public struct ChaosProfile: Equatable, Sendable {
     /// mover's lift and place) rather than wrapped before the move.
     public var knockedNeighborInterleavedProbability: Double
 
+    // Identity-board patterns (zero except .identityNoise).
+    public var ghostNeighborProbability: Double
+    public var coalescedCaptureProbability: Double
+
     // Pacing.
     /// Pause between consecutive events of a normal move, milliseconds.
     public var interEventDelayMs: ClosedRange<Int>
@@ -166,7 +191,9 @@ public struct ChaosProfile: Equatable, Sendable {
         knockedNeighborInterleavedProbability: Double,
         interEventDelayMs: ClosedRange<Int>,
         slowCastleLegPauseMs: ClosedRange<Int>,
-        chatterGapMs: ClosedRange<Int>
+        chatterGapMs: ClosedRange<Int>,
+        ghostNeighborProbability: Double = 0,
+        coalescedCaptureProbability: Double = 0
     ) {
         self.name = name
         self.adjustInPlaceProbability = adjustInPlaceProbability
@@ -185,6 +212,8 @@ public struct ChaosProfile: Equatable, Sendable {
         self.interEventDelayMs = interEventDelayMs
         self.slowCastleLegPauseMs = slowCastleLegPauseMs
         self.chatterGapMs = chatterGapMs
+        self.ghostNeighborProbability = ghostNeighborProbability
+        self.coalescedCaptureProbability = coalescedCaptureProbability
     }
 
     // MARK: Presets
@@ -262,6 +291,29 @@ public struct ChaosProfile: Equatable, Sendable {
         chatterGapMs: 5...80
     )
 
+    /// A careful player on a board with a flaky sensor and a scan slower
+    /// than a fast capture: `.casual` plus ghost neighbours and captures
+    /// coalesced into one frame. Every stream must still resolve the intended
+    /// move on an identity board read through its real adapter; the other
+    /// presets never draw these patterns, so their seeded streams are
+    /// unchanged.
+    public static let identityNoise = ChaosProfile(
+        name: "identityNoise",
+        adjustInPlaceProbability: 0.10, sensorChatterProbability: 0.05,
+        chatterRepetitions: 1...2,
+        captureOrderSwapProbability: 0.15, captureLiftReturnRedoProbability: 0.05,
+        slowCastleProbability: 0.50,
+        promotionSwapProbability: 0.60, promotionNoSwapProbability: 0,
+        midMoveStallProbability: 0.05, stallMs: 4_000...12_000,
+        slideThroughBlipsProbability: 0,
+        knockedNeighborProbability: 0, knockedNeighborInterleavedProbability: 0,
+        interEventDelayMs: 250...900,
+        slowCastleLegPauseMs: 700...2_500,
+        chatterGapMs: 10...40,
+        ghostNeighborProbability: 0.35,
+        coalescedCaptureProbability: 0.60
+    )
+
     /// Lookup by CLI name.
     public static func named(_ name: String) -> ChaosProfile? {
         switch name.lowercased() {
@@ -269,6 +321,7 @@ public struct ChaosProfile: Equatable, Sendable {
         case "casual":  return .casual
         case "clumsy":  return .clumsy
         case "hostile": return .hostile
+        case "identitynoise": return .identityNoise
         default:        return nil
         }
     }
@@ -301,6 +354,9 @@ public struct ChaosMoveContext: Sendable {
     public let identityBefore: [Piece?]
     /// The clean sensor sequence, extracted from `SimulatedBoard` events.
     public let cleanEvents: [ChaosMoveEvent]
+    /// Empty squares the mover could also legally move to, in algebraic
+    /// order: where a ghost reading turns into a wrong but legal move.
+    public let alternateDestinations: [String]
 
     /// Every square the move may legitimately touch — mirrors
     /// `BoardExecutionGate`'s effect-set geometry so adversarial patterns
@@ -354,6 +410,10 @@ public struct ChaosMoveContext: Sendable {
         }
 
         self.pathSquares = Self.intermediateSquares(from: move.from, to: move.to)
+        self.alternateDestinations = Set(MoveGenerator.legalMoves(for: positionBefore)
+            .filter { $0.from == move.from && $0.to != move.to && positionBefore[$0.to] == nil && !$0.isCastling }
+            .map(\.to.algebraic))
+            .sorted()
 
         // File-major identity (a1=0…h8=63) from the rank-major Position board.
         var identity = [Piece?](repeating: nil, count: 64)
@@ -440,6 +500,9 @@ public struct ChaosEngine: Sendable {
             } else if rng.chance(profile.captureLiftReturnRedoProbability) {
                 body = captureLiftReturnRedone(context)
                 applied.append(.captureLiftReturnRedo)
+            } else if rng.chance(profile.coalescedCaptureProbability) {
+                body = captureCoalesced(context)
+                applied.append(.coalescedCapture)
             }
         } else if context.isCastle {
             if rng.chance(profile.slowCastleProbability) {
@@ -459,6 +522,22 @@ public struct ChaosEngine: Sendable {
                 body = slideThroughBlipped(context, rng: &rng)
                 applied.append(.slideThroughBlips)
             }
+        }
+
+        // ── 3a. Ghost neighbour (identity-board) ──────────────────────────
+        //
+        // Inserted right after the mover leaves its square, so the phantom
+        // reads while the piece is in hand.
+        if rng.chance(profile.ghostNeighborProbability),
+           let ghost = rng.pick(context.alternateDestinations),
+           let liftIndex = body.firstIndex(where: { $0.square == context.fromSquare && $0.isLift }),
+           let mover = pieceAt(context.fromSquare, in: context) {
+            let phantom = Piece(type: mover.type == .pawn ? .knight : .pawn, color: mover.color)
+            body.insert(contentsOf: [
+                ChaosMoveEvent(square: ghost, isLift: false, piece: phantom),
+                ChaosMoveEvent(square: ghost, isLift: true, piece: phantom),
+            ], at: liftIndex + 1)
+            applied.append(.ghostNeighbor)
         }
 
         // ── 3. Mid-move knocked neighbour (adversarial) ───────────────────
@@ -510,7 +589,7 @@ public struct ChaosEngine: Sendable {
         var events = prefix + body
 
         // ── 4. Timing ─────────────────────────────────────────────────────
-        for i in events.indices where events[i].delayBeforeMs == 0 {
+        for i in events.indices where events[i].delayBeforeMs == 0 && !events[i].sameScanAsPrevious {
             events[i].delayBeforeMs = rng.int(in: profile.interEventDelayMs)
         }
         if events.count > 1, rng.chance(profile.midMoveStallProbability) {
@@ -549,6 +628,15 @@ public struct ChaosEngine: Sendable {
             ChaosMoveEvent(square: captured, isLift: true, piece: capturedPiece),
             ChaosMoveEvent(square: c.toSquare, isLift: false, piece: mover),
         ]
+    }
+
+    /// The clean capture with every event after the first in the same sensor
+    /// scan: one frame carries the whole capture.
+    private func captureCoalesced(_ c: ChaosMoveContext) -> [ChaosMoveEvent] {
+        c.cleanEvents.enumerated().map { index, event in
+            ChaosMoveEvent(square: event.square, isLift: event.isLift, piece: event.piece,
+                           sameScanAsPrevious: index > 0)
+        }
     }
 
     /// Castle as two complete piece-moves, king-first or rook-first, with a

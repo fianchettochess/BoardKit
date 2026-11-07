@@ -43,7 +43,7 @@ graph.
 | `CertaboAdapter` | Certabo RFID adapter (USB serial, BT Classic, BLE) |
 | `ChessUpAdapter` | ChessUp BLE adapter |
 | `BoardKitTestSupport` | `ReplayTransport` and `SimulatedBoard` test harness |
-| `boardkit-emulator` | macOS CLI BLE peripheral that emulates a supported board (Square Off, Chessnut, Pegasus, Millennium, Certabo, ChessUp) so the apps on a real phone can connect to it as if it were hardware |
+| `boardkit-emulator` | macOS CLI BLE peripheral that emulates a supported board (Square Off, Chessnut Air, Chessnut Move, Pegasus, Millennium, Certabo, ChessUp) so the apps on a real phone can connect to it as if it were hardware |
 
 ## Installation
 

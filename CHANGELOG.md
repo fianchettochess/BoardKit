@@ -46,6 +46,14 @@ Published tags are never moved or re-cut.
   `isSettled(_:for:at:)` says a destination has been quiet long enough to
   commit; `totalToggles` feeds an "unreliable square" notice. Pure value, no
   `Date`; `BoardEvent` is unchanged.
+- Test support: `ChaosPatternID.ghostNeighbor` and `.coalescedCapture`, the
+  `ChaosProfile.identityNoise` preset (CLI `identitynoise`),
+  `ChaosMoveEvent.sameScanAsPrevious` and
+  `ChaosMoveContext.alternateDestinations`. New `ChaosProfile` init parameters
+  default to zero, and the existing presets draw exactly the streams they did.
+- Emulator: `ChessnutMovePersonality` (`boardkit-emulator chessnutmove`) — the
+  Move's 38-byte board frames, battery and 139-byte piece-status replies,
+  4-colour LEDs and auto-move.
 
 ### Changed
 

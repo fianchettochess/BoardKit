@@ -9,10 +9,10 @@ import ChessUpAdapter
 /// dependency — BoardKit carries no third-party packages beyond ChessCore).
 ///
 /// ```
-/// boardkit-emulator <squareoff|chessnut>
+/// boardkit-emulator <squareoff|chessnut|chessnutmove|pegasus|millennium|certabo|chessup>
 ///     [--pgn <file>]            play this PGN's main line (default: seeded random game)
 ///     [--seed <n>]              chaos + random-game seed (default 0xF1A7)
-///     [--chaos <profile>]       clean | casual | clumsy | hostile (default casual)
+///     [--chaos <profile>]       clean | casual | clumsy | hostile | identitynoise (default casual)
 ///     [--think-ms <n>]          pause before playing own scripted moves (default 2000)
 ///     [--human-ms <n>]          pause before executing an LED-dictated move (default 1200)
 ///     [--capture <out.replay>]  write a ReplayScript-format traffic capture
@@ -29,6 +29,7 @@ public struct EmulatorOptions: Sendable, Equatable {
     public enum BoardKind: String, Sendable {
         case squareoff
         case chessnut
+        case chessnutmove
         case pegasus
         case millennium
         case certabo
@@ -64,10 +65,10 @@ public struct EmulatorOptions: Sendable, Equatable {
     public var manual: Bool = false
 
     public static let usage = """
-    usage: boardkit-emulator <squareoff|chessnut|pegasus|millennium|certabo|chessup> [options]
+    usage: boardkit-emulator <squareoff|chessnut|chessnutmove|pegasus|millennium|certabo|chessup> [options]
       --pgn <file>            play this PGN's main line (default: seeded random game)
       --seed <n>              chaos + random-game seed (default 0xF1A7)
-      --chaos <profile>       clean | casual | clumsy | hostile (default casual)
+      --chaos <profile>       clean | casual | clumsy | hostile | identitynoise (default casual)
       --think-ms <n>          pause before playing own scripted moves (default 2000)
       --human-ms <n>          pause before executing an LED-dictated move (default 1200)
       --capture <out.replay>  write a ReplayScript-format traffic capture
@@ -103,7 +104,7 @@ public struct EmulatorOptions: Sendable, Equatable {
             throw UsageError("missing board kind\n\(usage)")
         }
         guard let kind = BoardKind(rawValue: first.lowercased()) else {
-            throw UsageError("unknown board kind '\(first)' (expected squareoff | chessnut | pegasus | millennium | certabo | chessup)\n\(usage)")
+            throw UsageError("unknown board kind '\(first)' (expected squareoff | chessnut | chessnutmove | pegasus | millennium | certabo | chessup)\n\(usage)")
         }
         var options = EmulatorOptions(boardKind: kind)
 
@@ -180,6 +181,9 @@ public struct EmulatorOptions: Sendable, Equatable {
         case .chessnut:
             return ChessnutPersonality(advertisedName: advertisedName ?? "Chessnut Air",
                                        batteryPercent: batteryPercent)
+        case .chessnutmove:
+            return ChessnutMovePersonality(advertisedName: advertisedName ?? "Chessnut Move",
+                                           batteryPercent: batteryPercent)
         case .pegasus:
             return PegasusPersonality(advertisedName: advertisedName ?? PegasusGATT.factoryNamePrefix)
         case .millennium:

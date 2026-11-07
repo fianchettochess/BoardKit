@@ -241,12 +241,17 @@ get byte-identical perturbation streams on every run.
 | `.casual` | Occasional j'adoube, captures sometimes captured-piece-first, human-speed castles |
 | `.clumsy` | Same tolerated patterns as `.casual` at much higher rates |
 | `.hostile` | Everything in `.clumsy` plus dragged-piece blips and knocked neighbours (adversarial) |
+| `.identityNoise` | `.casual` plus ghost neighbours (a phantom piece on a square the mover could reach, read while it is in hand) and captures coalesced into one sensor scan — the Chessnut Go failures behind 0.12.x |
 
 Profiles `.clean`, `.casual`, and `.clumsy` draw only **tolerated** patterns:
 the `OccupancyMoveInference` and `BoardExecutionGate` kernels must resolve and
 execute 100% of streams from these profiles. `.hostile` adds adversarial
 patterns that may legitimately deviate the gate — the survival corpus asserts
-the outcome distribution rather than perfection.
+the outcome distribution rather than perfection. `.identityNoise` streams are
+meant for identity boards and run through a personality and the real adapter
+(`IdentityWireCorpusTests`): events marked `sameScanAsPrevious` go out in one
+frame via `coalescedFrames(for:)`, and every stream must commit the played move
+once `BoardIdentityCheck` confirms it.
 
 ### Usage
 
