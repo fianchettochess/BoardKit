@@ -88,8 +88,13 @@ Discards everything tied to the link that dropped: partial frames, vote or
 debounce history, the previous board state used for deltas, and queued
 responses. The transport calls it on every link drop, before
 `handshakeCommands(isReconnect: true)`, so a half-received frame is never
-spliced onto the new link's first frame, and the board's first state on the new
-link emits `.ready` again. Configuration survives: Millennium's detected
+spliced onto the new link's first frame. The next connection then decodes from a
+clean slate: its first state frame is read as a first frame, with no deltas
+against the old link. Adapters whose `.ready` marks the first state frame
+(Chessnut, Chessnut Move, Pegasus, Millennium, Certabo, ChessUp) emit `.ready`
+again on it. Square Off does not: its `.ready` answers `startSession`, which its
+reconnect handshake deliberately does not send, so a Square Off reconnect yields
+a snapshot and no `.ready`. Configuration survives: Millennium's detected
 rotation, and Certabo's calibration, rotation and detected board and LED type.
 Recreating the adapter instead is also correct, but loses that configuration.
 

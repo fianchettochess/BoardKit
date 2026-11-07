@@ -162,8 +162,13 @@ public protocol BoardAdapter: Sendable {
 
     /// Discard everything tied to the link that just dropped: partial frames,
     /// debounce or vote history, the previous board state used for deltas, and
-    /// queued responses. The next connection then decodes from a clean slate
-    /// and emits `.ready` again.
+    /// queued responses. The next connection then decodes from a clean slate:
+    /// its first state frame is read as a first frame, with no deltas against
+    /// the old link. Adapters whose `.ready` marks the first state frame
+    /// (Chessnut, Chessnut Move, Pegasus, Millennium, Certabo, ChessUp) emit
+    /// `.ready` again on it. Square Off does not: its `.ready` answers
+    /// `startSession`, which its reconnect handshake deliberately does not
+    /// send, so a Square Off reconnect yields a snapshot and no `.ready`.
     ///
     /// **Transport contract:** call this when the link drops, before running
     /// ``handshakeCommands(isReconnect:)`` with `isReconnect: true`. A

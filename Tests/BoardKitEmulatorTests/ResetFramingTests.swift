@@ -18,6 +18,11 @@ import BoardKitEmulator
 
 private enum ResetBoard: String, CaseIterable, Sendable {
     case squareOff, chessnut, chessnutMove, pegasus, millennium, certabo, chessUp
+
+    /// Whether the first state frame on the new link emits `.ready`. Square
+    /// Off's `.ready` answers `startSession`, which its reconnect handshake
+    /// does not send.
+    var reArmsReady: Bool { self != .squareOff }
 }
 
 /// What a transport does on a link drop: reset through the protocol, never
@@ -56,8 +61,24 @@ private func identityAfterE4() async throws -> [Piece?] {
     return identity
 }
 
+/// What a Square Off sends back to its reconnect handshake, run through the
+/// board's own personality with the board after 1.e4.
+private func squareOffReconnectWire(identity: [Piece?]) -> [Data] {
+    var personality = SquareOffPersonality()
+    _ = personality.frames(for: .identitySnapshot(identity))
+    let adapter = SquareOffAdapter()
+    return adapter.handshakeCommands(isReconnect: true).flatMap { step -> [Data] in
+        guard let write = adapter.encode(step.command) else { return [] }
+        return personality.handleHostWrite(write).compactMap { action in
+            if case .notify(let frame) = action { return frame.data }
+            return nil
+        }
+    }
+}
+
 /// Gates: after a link drop mid-frame and `resetFraming()`, every adapter
-/// decodes the next frame exactly as a fresh adapter would, `.ready` included.
+/// decodes the next frame exactly as a fresh adapter would, `.ready` where the
+/// board re-announces it.
 /// Breaks if: an adapter keeps part of its framing or history across the reset,
 /// or `resetFraming` stops being a protocol requirement (a generic transport
 /// then reaches the default no-op).
@@ -69,10 +90,8 @@ private func resetFramingDecodesLikeAFreshAdapter(_ board: ResetBoard) async thr
     let result: (reset: String, fresh: String)
     switch board {
     case .squareOff:
-        // Square Off's ready is its own "14#GO*" message, not the first state.
-        var personality = SquareOffPersonality()
-        let ready = personality.frames(for: .ready).map(\.data)
-        result = afterMidFrameDrop({ SquareOffAdapter() }, frames: stateWire(personality, identity: identity) + ready)
+        // The reconnect handshake asks for state only; no "14#GO*" follows.
+        result = afterMidFrameDrop({ SquareOffAdapter() }, frames: squareOffReconnectWire(identity: identity))
     case .chessnut:
         result = afterMidFrameDrop({ ChessnutAdapter() }, frames: stateWire(ChessnutPersonality(), identity: identity))
     case .chessnutMove:
@@ -87,5 +106,8 @@ private func resetFramingDecodesLikeAFreshAdapter(_ board: ResetBoard) async thr
         result = afterMidFrameDrop({ ChessUpAdapter() }, frames: stateWire(ChessUpPersonality(), identity: identity))
     }
     #expect(result.reset == result.fresh)
-    #expect(result.fresh.contains("ready"), "fixture must exercise the .ready re-arm")
+    #expect(result.reset.contains("ready") == board.reArmsReady)
+    if board == .squareOff {
+        #expect(result.reset.contains("occupancySnapshot"), "the reconnect must still deliver the board state")
+    }
 }
