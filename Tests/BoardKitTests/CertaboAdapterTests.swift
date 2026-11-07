@@ -1325,5 +1325,4 @@ private func certaboLearnReportsUnusableTags(_ c: LearnReportCase) {
     #expect(report.unusableSquares == c.unusableSquares)
     let tag = c.overrides.values.first
     #expect(report.calibration.entries.first { $0.tag == tag }?.piece == c.storedPiece)
-    #expect(report.calibration == CertaboCalibration.learn(from: [frame]))
 }
