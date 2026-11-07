@@ -32,6 +32,11 @@ private let toggleCases: [ToggleCase] = [
     ToggleCase(name: "an old burst",
                toggles: [("d2", 0.0), ("d2", 0.1), ("d2", 0.2), ("d2", 0.3)],
                queryTime: 1.5, flickering: []),
+    // The first of four toggles is exactly one window old at the query: the
+    // window is (t - 1 s, t], so only three count.
+    ToggleCase(name: "a toggle exactly one window old",
+               toggles: [("d2", 0.0), ("d2", 0.3), ("d2", 0.6), ("d2", 0.9)],
+               queryTime: 1.0, flickering: []),
 ]
 
 /// Gates: a square is flagged only when it toggles `flickerToggles` times
