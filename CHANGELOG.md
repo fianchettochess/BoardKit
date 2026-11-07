@@ -14,6 +14,13 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.18.1] — 2026-11-07
+
+### Changed
+
+- Requires ChessCore `.upToNextMinor(from: "0.17.0")` (was 0.16.x), so BoardKit
+  resolves together with ChessCore 0.17.0. No BoardKit API or behaviour change.
+
 ## [0.18.0] — 2026-11-07
 
 Breaking only for a `BoardAdapter` conformer outside BoardKit whose own
@@ -498,6 +505,7 @@ Chessnut Air family and Move, DGT Pegasus, Millennium, Certabo, ChessUp), the
 `ReplayTransport` / `SimulatedBoard` test harness, and the `boardkit-emulator`
 BLE peripheral with per-board personalities and a chaos engine.
 
+[0.18.1]: https://github.com/fianchettochess/BoardKit/releases/tag/0.18.1
 [0.18.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.18.0
 [0.17.1]: https://github.com/fianchettochess/BoardKit/releases/tag/0.17.1
 [0.17.0]: https://github.com/fianchettochess/BoardKit/releases/tag/0.17.0

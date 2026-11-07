@@ -2,7 +2,7 @@
 
 BoardKit is a Swift Package Manager library. Its only runtime dependency is
 [ChessCore](https://github.com/fianchettochess/ChessCore) (MIT), required as
-`.upToNextMinor(from: "0.16.0")` — a range rather than a pin, so a program that
+`.upToNextMinor(from: "0.17.0")` — a range rather than a pin, so a program that
 depends on both can choose its own ChessCore within that minor. No third-party
 networking, UI, or platform-specific libraries are required by the library
 targets.

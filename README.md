@@ -325,7 +325,7 @@ On-push Linux CI runs both the declared Swift 6.0 floor and the latest Swift
 image through the same versioned ChessCore dependency path used by consumers.
 
 The manifest declares one ordinary versioned ChessCore dependency —
-`.upToNextMinor(from: "0.16.0")` — and knows nothing about how your checkout is
+`.upToNextMinor(from: "0.17.0")` — and knows nothing about how your checkout is
 arranged. The requirement is a range rather than a pin so that a program
 depending on both BoardKit and ChessCore can choose its own ChessCore within
 that minor; an `exact:` requirement in a library propagates to every consumer
