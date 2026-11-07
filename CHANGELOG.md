@@ -39,6 +39,13 @@ Published tags are never moved or re-cut.
 - `CertaboCalibration.learnReporting(from:standardStart:)` returns the
   calibration with the tags it could not use: `collisions` (one tag voted on
   several squares) and `unusableSquares` (tags with three or more zero bytes).
+- `SquareToggleMonitor`: per-square toggle counts over a caller-supplied
+  clock, the time-dependent part of a flicker filter for occupancy-only
+  boards. `isFlickering` / `flickeringSquares` flag a square toggling
+  `flickerToggles` times (default 4) within `window` (default 1 s);
+  `isSettled(_:for:at:)` says a destination has been quiet long enough to
+  commit; `totalToggles` feeds an "unreliable square" notice. Pure value, no
+  `Date`; `BoardEvent` is unchanged.
 
 ### Changed
 

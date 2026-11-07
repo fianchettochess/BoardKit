@@ -138,7 +138,8 @@ private func chessUpFrameLength(forOpcode opcode: UInt8) -> Int? {
 //
 // Shared by 0x67 body (occupancy derivation) and 0xB8 capacitive-touch events.
 // Used for occupancy classification only: code == 0x40 → empty, else occupied.
-// Piece type/colour are NOT surfaced (no .pieceIdentity capability declared).
+// Piece type/colour are NOT surfaced: they come from the board's game model,
+// not its sensors (see `BoardCapabilities.chessUp`).
 //
 // [PRIMARY] chessupdriver PieceType enum; [FACTS-ONLY] bluecheese PIECE_* consts.
 //
@@ -916,8 +917,17 @@ extension BoardCapabilities {
     /// The Millennium adapter (9×9 corner grid) is the canonical precedent:
     /// `.moveIndication` without `.perSquareLEDs`.
     ///
-    /// `.pieceIdentity` is NOT declared: the 0x67 frame encodes piece codes but
-    /// the product-spec capability set is occupancy + move indication only.
+    /// `.pieceIdentity` is NOT declared, though the 0x67 frame carries piece
+    /// codes (re-checked for Fianchetto-1ml):
+    /// - Those codes are the board's own game model, not a sensor reading:
+    ///   0x66 loads any FEN into it and 0x67 then reports it back, whatever
+    ///   stands on the squares. What the board senses is occupancy (and
+    ///   touch); the 0xB8 touch frame's piece code comes from the same model.
+    /// - Live moves arrive as 0xA3 from/to pairs with no piece, so the
+    ///   capability's contract (`squareSensed` carries a non-nil piece, frames
+    ///   arrive as `identitySnapshot`) cannot be met.
+    /// - Declaring it would make the session's identity check trust the board's
+    ///   inference as proof of what was placed, which is the check's whole point.
     /// `.batteryReporting` is NOT declared: the 0x33 frame carries a charging
     /// flag only (not a percentage), so `BoardEvent.battery(percent:)` cannot
     /// be populated from it.
