@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "boardkit",
+  "project_id": "0561c142-e642-472c-9ecd-998b38b01d51"
+}
