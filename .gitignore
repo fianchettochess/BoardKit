@@ -11,10 +11,3 @@ Package.resolved
 # appeared before; ignore it so an accidental `git add -A` can't bake the local
 # home path into history.
 /BoardKit
-
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
-.beads/proxieddb/
-*.gate.lock*
