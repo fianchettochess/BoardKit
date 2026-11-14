@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   windows:
-    name: BoardKit — Windows gate / tests (Swift 6.3.3, x86_64-msvc)
+    name: BoardKit — Windows gate / tests (Swift 6.4.2, x86_64-msvc)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -54,8 +54,8 @@ jobs:
         continue-on-error: true
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.3.3-release
-          tag: 6.3.3-RELEASE
+          branch: swift-6.4.2-release
+          tag: 6.4.2-RELEASE
 
       # Neither arrives on PATH by itself, measured on FianchettoKit CI
       # 2026-09-01: the installer runs elevated as SYSTEM while Swift installs
@@ -85,7 +85,7 @@ jobs:
             exit 0
           }
           Write-Host "::warning::swift.exe absent after a install that reported success. Retrying once."
-          $url = "https://download.swift.org/swift-6.3.3-release/windows10/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-windows10.exe"
+          $url = "https://download.swift.org/swift-6.4.2-release/windows10/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-windows10.exe"
           $exe = Join-Path $env:TEMP "swift-retry.exe"
           Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
           $p = Start-Process -FilePath $exe -ArgumentList "/quiet" -Wait -PassThru
