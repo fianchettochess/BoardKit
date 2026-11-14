@@ -84,7 +84,7 @@ private func feed(_ adapter: inout ChessnutMoveAdapter, _ frame: PersonalityFram
     #expect(raws.first?.count == 139)
     // The white king is the 17th record: identity 6 (white king).
     #expect(raws.first.map { $0[3 + 16 * 4] } == 6)
-    #expect(events.contains { if case .battery(64) = $0 { return true }; return false })
+    #expect(events.contains { if case .battery(64, _) = $0 { return true }; return false })
     let sensed = events.compactMap { event -> String? in
         if case .squareSensed(let square, let isLift, _) = event { return "\(isLift ? "lift" : "place") \(square)" }
         return nil

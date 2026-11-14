@@ -42,7 +42,7 @@ public struct BoardCapabilities: OptionSet, Sendable {
     /// quarantined pending wire-format verification.
     public static let motorised        = BoardCapabilities(rawValue: 1 << 4)
 
-    /// Reports battery level via `BoardEvent.battery(percent:)`.
+    /// Reports battery level via `BoardEvent.battery(percent:isCharging:)`.
     public static let batteryReporting = BoardCapabilities(rawValue: 1 << 5)
 
     /// True per-piece unique identity — a board that can tell one knight from

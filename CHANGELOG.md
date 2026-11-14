@@ -14,6 +14,15 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
+## [0.19.0] — Unreleased
+
+### Changed
+
+- **Breaking:** `BoardEvent.battery(percent:)` is now
+  `battery(percent:isCharging:)`. Update event matches and constructors for the
+  optional charging state: Chessnut classic and Move report it; `nil` means the
+  board or protocol does not report it. Battery percentages are unchanged.
+
 ## [0.18.1] — 2026-11-07
 
 ### Changed

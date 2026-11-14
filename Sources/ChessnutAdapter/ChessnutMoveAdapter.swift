@@ -211,7 +211,7 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// Dispatch table (notify channels):
     /// - `0x01` on 1b7e8262 → board-state → `identitySnapshot` + deltas + `.ready`
     /// - `0x41` on 1b7e8273 → extended response → dispatch on sub-opcode:
-    ///   - `0x0C` battery → `.battery(percent:)`
+    ///   - `0x0C` battery → `.battery(percent:isCharging:)`
     ///   - `0x0B` piece-status → `.raw(data)` (no dedicated `BoardEvent` case yet)
     ///   - no other sub-opcode is framed: its bytes are skipped like any
     ///     unknown header
@@ -455,10 +455,7 @@ public struct ChessnutMoveAdapter: BoardAdapter {
     /// Dispatch on `frame[2]` (sub-opcode):
     ///
     /// **Battery (0x0C)**: `41 03 0C <charging> <level>`
-    ///   - Emits `.battery(percent: Int(frame[4]))`.
-    ///   - The charging byte (`frame[3]`) is not currently forwarded
-    ///     (surfacing it requires a new `BoardEvent` payload — tracked for a
-    ///     future minor version).
+    ///   - Emits the level from `frame[4]` and charging state from `frame[3]`.
     ///   - [DISCREPANCY vs classic]: classic battery decodes a bitmask
     ///     `level & 0x7F`; Move has a dedicated charging byte, no mask needed.
     ///
@@ -480,7 +477,7 @@ public struct ChessnutMoveAdapter: BoardAdapter {
             // Battery response: 41 03 0C <charging> <level>
             // frame[3] = charging (1=yes, 0=no); frame[4] = level 0–100.
             guard frame.count >= 5 else { return [.raw(Data(frame))] }
-            return [.battery(percent: Int(frame[4]))]
+            return [.battery(percent: Int(frame[4]), isCharging: frame[3] == 1)]
         case MoveSubOpcode.pieceStatus:
             // Piece-status response: 139-byte frame; raw passthrough.
             // No BoardEvent case for per-piece data yet; session may parse.

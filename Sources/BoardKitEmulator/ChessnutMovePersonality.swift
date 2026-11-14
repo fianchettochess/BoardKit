@@ -53,7 +53,7 @@ public struct ChessnutMovePersonality: BoardPersonality {
 
     public mutating func frames(for event: BoardEvent) -> [PersonalityFrame] {
         switch event {
-        case .battery(let percent):
+        case .battery(let percent, _):
             return [batteryFrame(percent: percent)]
         default:
             let frames = mirror.frames(for: event)

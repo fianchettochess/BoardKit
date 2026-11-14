@@ -594,7 +594,7 @@ public struct PegasusAdapter: BoardAdapter {
     private func processBattery(_ frame: [UInt8]) -> [BoardEvent] {
         let payloadLen = frame.count - 3
         guard payloadLen >= 1 else { return [.raw(Data(frame))] }
-        return [.battery(percent: Int(frame[3]))]
+        return [.battery(percent: Int(frame[3]), isCharging: nil)]
     }
 
     // MARK: - LED encoding (host→board)

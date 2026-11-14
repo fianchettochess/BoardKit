@@ -70,7 +70,7 @@ public struct PegasusPersonality: BoardPersonality {
             if identity.count == 64 { occupancy = identity.map { $0 != nil } }
             return [boardDumpFrame()]
 
-        case .battery(let percent):
+        case .battery(let percent, _):
             // 0xA0 [0x00, 0x0C, percent, 0,0,0,0,0,0,0,0,0] — 12 bytes total length
             // Keep simple: emit a minimal valid battery reply.
             let totalLen: UInt8 = 12

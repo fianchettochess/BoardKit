@@ -235,30 +235,24 @@ private func piece(at algebraic: String, in identity: [Piece?]) -> Piece? {
     #expect(data == Data([0x29, 0x01, 0x00]))
 }
 
-@Test func g6BatteryResponseCharging67() throws {
-    // 0xC3 = 0x80 | 67 → charging = true, 67 %
-    let frame = Data([0x2A, 0x02, 0xC3, 0x00])
-    var adapter = ChessnutAdapter()
-    let events = adapter.feed(bytes: frame)
-    #expect(events.count == 1)
-    guard case .battery(let pct) = events[0] else {
-        Issue.record("Expected .battery event, got \(events[0])")
-        return
+@Test("Classic battery replies preserve 0.18.1 percentages and expose charging; a mask regression would mislead users")
+func classicBatteryChargingAndPercentFromReplies() {
+    let cases: [(bytes: [UInt8], percent: Int, charging: Bool)] = [
+        ([0x2A, 0x02, 0xC3, 0x00], 67, true),
+        ([0x2A, 0x02, 0x43, 0x00], 67, false),
+        ([0x2A, 0x02, 0x00, 0x00], 0, false),
+    ]
+    for item in cases {
+        var adapter = ChessnutAdapter()
+        let events = adapter.feed(bytes: Data(item.bytes))
+        #expect(events.count == 1)
+        guard case .battery(let percent, let charging) = events.first else {
+            Issue.record("Expected a battery event for \(item.bytes)")
+            continue
+        }
+        #expect(percent == item.percent)
+        #expect(charging == item.charging)
     }
-    #expect(pct == 67)
-}
-
-@Test func g6BatteryResponseNotCharging67() throws {
-    // 0x43 = 67 (no charging flag)
-    let frame = Data([0x2A, 0x02, 0x43, 0x00])
-    var adapter = ChessnutAdapter()
-    let events = adapter.feed(bytes: frame)
-    #expect(events.count == 1)
-    guard case .battery(let pct) = events[0] else {
-        Issue.record("Expected .battery event, got \(events[0])")
-        return
-    }
-    #expect(pct == 67)
 }
 
 // MARK: - G7: LED c4 only (doubly source-confirmed canary)

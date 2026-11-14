@@ -697,7 +697,7 @@ public struct ChessUpAdapter: BoardAdapter {
             return processMoveFromBoardFrame(frame)
         case 0x33:
             // Battery-charging status [B0, 0/1]: carries only a flag, not a
-            // percentage. BoardEvent.battery(percent:) requires a percentage, so
+            // percentage. BoardEvent.battery(percent:isCharging:) requires a percentage, so
             // this frame is forwarded as raw. [PRIMARY] BatteryChargingMessage.
             return [.raw(Data(frame))]
         case 0xB8, 0xBB:
@@ -929,7 +929,7 @@ extension BoardCapabilities {
     /// - Declaring it would make the session's identity check trust the board's
     ///   inference as proof of what was placed, which is the check's whole point.
     /// `.batteryReporting` is NOT declared: the 0x33 frame carries a charging
-    /// flag only (not a percentage), so `BoardEvent.battery(percent:)` cannot
+    /// flag only (not a percentage), so `BoardEvent.battery(percent:isCharging:)` cannot
     /// be populated from it.
     public static let chessUp: BoardCapabilities = [
         .occupancySensing, .moveIndication,

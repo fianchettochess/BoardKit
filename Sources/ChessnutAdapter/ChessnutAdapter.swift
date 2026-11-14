@@ -300,7 +300,7 @@ public struct ChessnutAdapter: BoardAdapter {
     ///
     /// Dispatch table:
     /// - `0x01` → board-state frame → `identitySnapshot` + `squareSensed` deltas
-    /// - `0x2A` → battery response → `battery(percent:)`
+    /// - `0x2A` → battery response → `battery(percent:isCharging:)`
     /// - `0x27` → BLE/MCU version → `raw(data)`
     /// - `0x37` → file-transfer flags → `raw(data)`
     /// - other accepted opcodes (`0x21`, `0x23`, `0x41`) → `raw(data)`
@@ -563,19 +563,18 @@ public struct ChessnutAdapter: BoardAdapter {
     /// Decode a battery-response frame (`0x2A 0x02 <battery> <reserved>`).
     ///
     /// `battery & 0x7F` = percentage 0–100.
-    /// `battery & 0x80` = charging flag (not currently forwarded; surfacing
-    /// it needs a struct payload — tracked for a future minor version).
+    /// `battery & 0x80` = charging flag.
     ///
     /// [DISCREPANCY vs C-REF]: [C-REF] drops frames where `battery == 0`
     /// as a firmware-workaround for spurious zero readings. We pass them
-    /// through as `battery(percent: 0)` and let the session decide; zero
+    /// through as `battery(percent: 0, isCharging: false)` and let the session decide; zero
     /// is noted in [C-REF] as unreliable, so callers should display "—"
     /// rather than "0 %" for zero values.
     private func processBatteryFrame(_ frame: [UInt8]) -> [BoardEvent] {
         guard frame.count >= 4 else { return [.raw(Data(frame))] }
         let raw = frame[2]
         let percent = Int(raw & 0x7F)
-        return [.battery(percent: percent)]
+        return [.battery(percent: percent, isCharging: raw & 0x80 != 0)]
     }
 
     // MARK: - Stored-game import

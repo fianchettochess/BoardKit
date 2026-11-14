@@ -68,8 +68,8 @@ for await event in transport.events {
     case .squareSensed(let square, let isLift, let piece):
         // Feed into OccupancyMoveInference
         break
-    case .battery(let pct):
-        print("Battery: \(pct)%")
+    case .battery(let pct, let isCharging):
+        print("Battery: \(pct)%, charging: \(isCharging.map(String.init) ?? "unknown")")
     case .disconnected(let error):
         print("Disconnected:", error ?? "clean")
     default:

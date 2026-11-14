@@ -20,7 +20,7 @@ public enum BoardEvent: Sendable {
     case ready
     case disconnected(error: String?)
     // Housekeeping
-    case battery(percent: Int)
+    case battery(percent: Int, isCharging: Bool?)
     case raw(Data)
     // Hardware-reported picks
     case promotionPick(piece: PieceType)
@@ -55,7 +55,7 @@ only occupancy: `map { $0 != nil }`.
 
 ### Housekeeping
 
-**`.battery(percent:)`** — battery level 0–100, emitted by boards that
+**`.battery(percent:isCharging:)`** — battery level 0–100 and charging state (`nil` when unreported), emitted by boards that
 support it (Chessnut Air family, DGT Pegasus).
 
 **`.raw(Data)`** — undecoded bytes for any frame an adapter does not decode, so

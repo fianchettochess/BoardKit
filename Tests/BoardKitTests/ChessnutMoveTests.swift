@@ -318,44 +318,24 @@ private let f4LEDBytes = Data([
     #expect(req == Data([0x41, 0x01, 0x0C]))
 }
 
-@Test func f5BatteryResponse91Percent() throws {
-    let response = Data([0x41, 0x03, 0x0C, 0x01, 0x5B])
-    var adapter = ChessnutMoveAdapter()
-    let events  = adapter.feed(bytes: response)
-    #expect(events.count == 1)
-    guard case .battery(let pct) = events[0] else {
-        Issue.record("Expected .battery event; got \(events[0])")
-        return
+@Test("Move battery replies preserve 0.18.1 percentages and expose charging; swapping bytes would mislead users")
+func moveBatteryChargingAndPercentFromReplies() {
+    let cases: [(bytes: [UInt8], percent: Int, charging: Bool)] = [
+        ([0x41, 0x03, 0x0C, 0x01, 0x5B], 91, true),
+        ([0x41, 0x03, 0x0C, 0x00, 0x5B], 91, false),
+        ([0x41, 0x03, 0x0C, 0x00, 0x00], 0, false),
+    ]
+    for item in cases {
+        var adapter = ChessnutMoveAdapter()
+        let events = adapter.feed(bytes: Data(item.bytes))
+        #expect(events.count == 1)
+        guard case .battery(let percent, let charging) = events.first else {
+            Issue.record("Expected a battery event for \(item.bytes)")
+            continue
+        }
+        #expect(percent == item.percent)
+        #expect(charging == item.charging)
     }
-    #expect(pct == 91, "0x5B = 91; expected 91% battery level")
-}
-
-@Test func f5BatteryResponseZeroLevel() throws {
-    // Level=0 is passed through (adapter does not suppress it).
-    let response = Data([0x41, 0x03, 0x0C, 0x00, 0x00])
-    var adapter  = ChessnutMoveAdapter()
-    let events   = adapter.feed(bytes: response)
-    guard case .battery(let pct) = events.first else {
-        Issue.record("Expected .battery event")
-        return
-    }
-    #expect(pct == 0)
-}
-
-@Test func f5BatteryResponseChargingByteNotExposed() throws {
-    // charging byte (frame[3]) is not yet forwarded; only level (frame[4]) matters.
-    let chargingResponse    = Data([0x41, 0x03, 0x0C, 0x01, 50])
-    let notChargingResponse = Data([0x41, 0x03, 0x0C, 0x00, 50])
-    var a1 = ChessnutMoveAdapter()
-    var a2 = ChessnutMoveAdapter()
-    guard case .battery(let pct1) = a1.feed(bytes: chargingResponse).first,
-          case .battery(let pct2) = a2.feed(bytes: notChargingResponse).first
-    else {
-        Issue.record("Expected .battery events")
-        return
-    }
-    #expect(pct1 == 50)
-    #expect(pct2 == 50)
 }
 
 // MARK: - F6: Piece-status request and response

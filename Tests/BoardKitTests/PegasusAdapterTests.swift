@@ -348,7 +348,7 @@ private func encodePegasusDump(position: Position) -> Data {
     let events = adapter.feed(bytes: f9Bytes)
 
     #expect(events.count == 1, "F9: expected exactly one event for battery reply")
-    guard case .battery(let pct) = events[0] else {
+    guard case .battery(let pct, nil) = events[0] else {
         Issue.record("F9: expected .battery event, got \(events[0])")
         return
     }
@@ -361,7 +361,7 @@ private func encodePegasusDump(position: Position) -> Data {
     let minBattery = Data([0xA0, 0x00, 0x04, 0x64])  // totalLen=4, percent=100
     var adapter = PegasusAdapter()
     let events = adapter.feed(bytes: minBattery)
-    guard case .battery(let pct) = events.first else {
+    guard case .battery(let pct, nil) = events.first else {
         Issue.record("F9: minimal battery frame must emit .battery")
         return
     }

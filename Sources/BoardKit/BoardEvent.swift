@@ -95,13 +95,10 @@ public enum BoardEvent: Sendable {
     // MARK: - Housekeeping
 
     /// Battery level 0–100, when the board reports it.
-    ///
-    /// Chessnut Air/Air+/Pro/Go: unsolicited frames and responses to the
-    /// `0x29 0x01 0x00` battery-request command both surface here. The
-    /// charging flag reported by some firmware is currently not forwarded
-    /// (surfacing it requires a separate `BoardEvent` case or a struct
-    /// payload — tracked for a future minor version).
-    case battery(percent: Int)
+    /// `isCharging` is nil when the board or protocol does not report charging.
+    /// Chessnut Air/Air+/Pro/Go report both unsolicited frames and responses
+    /// to the `0x29 0x01 0x00` battery request here.
+    case battery(percent: Int, isCharging: Bool?)
 
     /// Raw undecoded bytes.
     ///

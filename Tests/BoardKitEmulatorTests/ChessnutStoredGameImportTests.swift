@@ -89,7 +89,7 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
     #expect(adapter.feed(bytes: Data([0x2A, 0x02]), from: .commandResponse).isEmpty)
     #expect(adapter.feed(bytes: Data(frames[0].dropFirst(10)), from: .file).isEmpty)
     let control = adapter.feed(bytes: Data([77, 0]), from: .commandResponse)
-    #expect(control.contains { if case .battery(percent: 77) = $0 { true } else { false } })
+    #expect(control.contains { if case .battery(percent: 77, isCharging: _) = $0 { true } else { false } })
     for frame in frames.dropFirst() { _ = adapter.feed(bytes: frame, from: .file) }
     let games = importedGames(adapter.feed(bytes: Data([0x37, 0x01, 0xED]), from: .file))
     #expect(games.map(\.sans) == [line])
@@ -106,10 +106,10 @@ private func importedGames(_ events: [BoardEvent]) -> [(sans: [String], complete
     adapter.resetFraming()
     for endpoint in [ChessnutAdapter.NotificationEndpoint.commandResponse, .file, .boardState] {
         let events = adapter.feed(bytes: Data([0x2A, 0x02, 61, 0]), from: endpoint)
-        #expect(events.contains { if case .battery(percent: 61) = $0 { true } else { false } })
+        #expect(events.contains { if case .battery(percent: 61, isCharging: _) = $0 { true } else { false } })
     }
     let legacy = adapter.feed(bytes: Data([0x2A, 0x02, 42, 0]))
-    #expect(legacy.contains { if case .battery(percent: 42) = $0 { true } else { false } })
+    #expect(legacy.contains { if case .battery(percent: 42, isCharging: _) = $0 { true } else { false } })
 }
 
 @Test func duplicateCatalogCannotRestartAnActiveOrBetweenFilesDownload() {

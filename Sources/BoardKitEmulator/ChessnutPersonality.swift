@@ -152,7 +152,7 @@ public struct ChessnutPersonality: BoardPersonality {
             // without inventing pieces. Callers feed identity snapshots.
             return []
 
-        case .battery(let percent):
+        case .battery(let percent, _):
             return [batteryFrame(percent: percent, charging: isCharging)]
 
         case .ready, .connected, .disconnected, .raw, .promotionPick, .storedGameImported:

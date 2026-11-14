@@ -152,7 +152,7 @@ import BoardKitTestSupport
     // Host adapter decodes the charging response to 67 %.
     var host = ChessnutAdapter()
     let events = host.feed(bytes: frame.data)
-    guard case .battery(let percent) = events.first else {
+    guard case .battery(let percent, _) = events.first else {
         Issue.record("host could not decode battery response")
         return
     }
