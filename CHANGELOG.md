@@ -14,7 +14,7 @@ Published tags are never moved or re-cut.
 > **0.6.0 and earlier cannot be resolved from a URL by anyone.** If you are on
 > one of those versions, the 0.7.0 entry below is the one to read.
 
-## [0.19.0] — Unreleased
+## [0.19.0] — 2026-11-13
 
 ### Changed
 
